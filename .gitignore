@@ -1,0 +1,29 @@
+# env
+.env
+.env.local
+
+# dependencies
+node_modules/
+**/node_modules/
+
+# hardhat
+contracts/artifacts/
+contracts/cache/
+contracts/typechain-types/
+
+# build outputs
+frontend/dist/
+backend/dist/
+mcp-server/dist/
+
+# logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/

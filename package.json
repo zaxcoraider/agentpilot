@@ -1,0 +1,20 @@
+{
+  "name": "agentpilot",
+  "version": "1.0.0",
+  "description": "AgentPilot — AI-powered agentic wallet on X Layer (OKX Build X Hackathon S2)",
+  "private": true,
+  "workspaces": [
+    "contracts",
+    "backend",
+    "frontend",
+    "mcp-server"
+  ],
+  "scripts": {
+    "compile": "npm run compile --workspace=contracts",
+    "deploy:testnet": "npm run deploy:testnet --workspace=contracts",
+    "deploy:mainnet": "npm run deploy:mainnet --workspace=contracts",
+    "backend": "npm run dev --workspace=backend",
+    "frontend": "npm run dev --workspace=frontend",
+    "mcp": "npm run dev --workspace=mcp-server"
+  }
+}
