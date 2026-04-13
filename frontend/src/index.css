@@ -1,0 +1,66 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * { box-sizing: border-box; }
+  body {
+    background-color: #080810;
+    color: #c8c8e0;
+    font-family: "Inter", system-ui, sans-serif;
+    margin: 0;
+    overflow-x: hidden;
+  }
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: #0d0d1a; }
+  ::-webkit-scrollbar-thumb { background: #1a1a2e; border-radius: 2px; }
+  ::-webkit-scrollbar-thumb:hover { background: #00ff9f44; }
+}
+
+@layer components {
+  .panel {
+    @apply bg-terminal-panel border border-terminal-border rounded-lg overflow-hidden flex flex-col;
+  }
+  .panel-header {
+    @apply flex items-center justify-between px-3 py-2 border-b border-terminal-border bg-terminal-bg;
+  }
+  .panel-title {
+    @apply text-xs font-mono font-medium tracking-widest uppercase text-terminal-green;
+  }
+  .panel-body {
+    @apply flex-1 overflow-y-auto p-3;
+  }
+  .btn-primary {
+    @apply bg-terminal-green text-terminal-bg font-mono text-xs font-medium px-3 py-1.5 rounded hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+  .btn-secondary {
+    @apply border border-terminal-border text-terminal-text font-mono text-xs px-3 py-1.5 rounded hover:border-terminal-green hover:text-terminal-green transition-colors disabled:opacity-40;
+  }
+  .btn-danger {
+    @apply border border-terminal-red text-terminal-red font-mono text-xs px-3 py-1.5 rounded hover:bg-terminal-red hover:text-terminal-bg transition-colors;
+  }
+  .input-field {
+    @apply w-full bg-terminal-bg border border-terminal-border rounded px-3 py-1.5 text-xs font-mono text-terminal-text placeholder-terminal-muted focus:outline-none focus:border-terminal-green transition-colors;
+  }
+  .data-row {
+    @apply flex items-center justify-between py-1.5 border-b border-terminal-border last:border-0;
+  }
+  .data-label {
+    @apply text-xs text-terminal-muted font-mono;
+  }
+  .data-value {
+    @apply text-xs font-mono text-terminal-text;
+  }
+  .badge-green {
+    @apply text-xs font-mono px-1.5 py-0.5 rounded bg-terminal-green bg-opacity-10 text-terminal-green;
+  }
+  .badge-red {
+    @apply text-xs font-mono px-1.5 py-0.5 rounded bg-terminal-red bg-opacity-10 text-terminal-red;
+  }
+  .badge-cyan {
+    @apply text-xs font-mono px-1.5 py-0.5 rounded bg-terminal-cyan bg-opacity-10 text-terminal-cyan;
+  }
+  .status-dot {
+    @apply w-1.5 h-1.5 rounded-full;
+  }
+}

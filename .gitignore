@@ -1,6 +1,7 @@
 # env
 .env
 .env.local
+backend/.env
 
 # dependencies
 node_modules/
@@ -27,3 +28,6 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+
+# Claude Code
+.claude/

@@ -1,0 +1,150 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── User ─────────────────────────────────────────────────────────────────────
+
+model User {
+  id            String        @id @default(cuid())
+  email         String?       @unique
+  walletAddress String        @unique
+  createdAt     DateTime      @default(now())
+
+  agents        Agent[]
+  subscriptions Subscription[]
+
+  @@index([walletAddress])
+}
+
+// ─── Agent ────────────────────────────────────────────────────────────────────
+
+model Agent {
+  id            String    @id @default(cuid())
+  userId        String
+  name          String    @default("AgentPilot")
+  walletAddress String    @unique
+  status        AgentStatus @default(ACTIVE)
+  createdAt     DateTime  @default(now())
+
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  actions       Action[]
+  dcaPlans      DCAPlan[]
+  alerts        Alert[]
+
+  @@index([userId])
+  @@index([walletAddress])
+}
+
+enum AgentStatus {
+  ACTIVE
+  PAUSED
+  STOPPED
+}
+
+// ─── Action ───────────────────────────────────────────────────────────────────
+
+model Action {
+  id        String     @id @default(cuid())
+  agentId   String
+  type      ActionType
+  details   String
+  txHash    String?
+  cost      Float      @default(0) // in OKB
+  onChain   Boolean    @default(false) // was this logged to AgentPilotRegistry.sol?
+  createdAt DateTime   @default(now())
+
+  agent     Agent      @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([agentId])
+  @@index([createdAt])
+  @@index([type])
+}
+
+enum ActionType {
+  SWAP
+  PAYMENT
+  INVEST
+  DCA_EXECUTE
+  SCAN
+  SEARCH
+  SIGNAL
+}
+
+// ─── DCA Plan ─────────────────────────────────────────────────────────────────
+
+model DCAPlan {
+  id            String      @id @default(cuid())
+  agentId       String
+  tokenIn       String
+  tokenOut      String
+  amount        String      // human-readable amount
+  intervalSecs  Int
+  nextExecution DateTime
+  status        DCAPlanStatus @default(ACTIVE)
+  planIdOnChain String?     // bytes32 planId from SimpleDCA contract
+  totalExecuted Int         @default(0)
+  createdAt     DateTime    @default(now())
+
+  agent         Agent       @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([agentId])
+  @@index([status, nextExecution])
+}
+
+enum DCAPlanStatus {
+  ACTIVE
+  PAUSED
+  CANCELLED
+  COMPLETED
+}
+
+// ─── Alert ────────────────────────────────────────────────────────────────────
+
+model Alert {
+  id        String      @id @default(cuid())
+  agentId   String
+  type      AlertType
+  condition Json        // flexible: { token, threshold, direction } etc.
+  active    Boolean     @default(true)
+  lastFired DateTime?
+  createdAt DateTime    @default(now())
+
+  agent     Agent       @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@index([agentId])
+  @@index([active])
+}
+
+enum AlertType {
+  PRICE_ABOVE
+  PRICE_BELOW
+  PORTFOLIO_CHANGE
+  DCA_EXECUTED
+  LOW_BALANCE
+}
+
+// ─── Subscription ─────────────────────────────────────────────────────────────
+
+model Subscription {
+  id                String           @id @default(cuid())
+  userId            String
+  tier              SubscriptionTier @default(FREE)
+  x402PaymentCount  Int              @default(0)  // total x402 micropayments made
+  expiresAt         DateTime?
+  createdAt         DateTime         @default(now())
+
+  user              User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+enum SubscriptionTier {
+  FREE
+  PRO
+  ELITE
+}

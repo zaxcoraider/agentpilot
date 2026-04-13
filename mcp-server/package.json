@@ -1,15 +1,19 @@
 {
   "name": "@agentpilot/mcp-server",
   "version": "1.0.0",
-  "description": "AgentPilot MCP server — exposes OKX OnchainOS tools to AI agents",
-  "main": "src/index.js",
+  "description": "AgentPilot MCP server — exposes OKX OnchainOS DeFi tools to AI agents via Claude Code",
+  "main": "dist/index.js",
   "scripts": {
-    "dev": "node --watch src/index.js",
-    "start": "node src/index.js"
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0",
-    "dotenv": "^16.0.0",
-    "ethers": "^6.0.0"
+    "@modelcontextprotocol/sdk": "^1.0.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0"
   }
 }
