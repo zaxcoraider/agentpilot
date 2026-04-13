@@ -50,7 +50,7 @@ async function processQueue() {
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         // Reset nonce on nonce errors so we resync next cycle
-        if (msg.includes("nonce") || msg.includes("replacement")) {
+        if (msg.includes("nonce") || msg.includes("replacement") || msg.includes("NONCE")) {
           nonce = null;
         }
         console.warn(`[registry] log failed: ${msg}`);

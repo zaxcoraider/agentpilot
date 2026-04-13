@@ -5,25 +5,24 @@
 type AnyRecord = Record<string, any>;
 
 function makeNoopProxy(): AnyRecord {
-  return new Proxy({} as AnyRecord, {
-    get() {
-      return () => Promise.resolve(null);
-    },
+  const noop = (): Promise<null> => Promise.resolve(null);
+  return new Proxy(noop as AnyRecord, {
+    get() { return makeNoopProxy(); },
+    apply() { return Promise.resolve(null); },
   });
 }
 
 let _client: AnyRecord | null = null;
 
 function getDb(): AnyRecord {
-  if (!process.env.DATABASE_URL) return makeNoopProxy();
+  const url = process.env.DATABASE_URL || "";
+  if (!url.startsWith("postgresql://") && !url.startsWith("postgres://")) return makeNoopProxy();
   if (_client) return _client;
   try {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { PrismaClient } = require("@prisma/client");
     const g = globalThis as AnyRecord;
-    _client = g["prisma"] ?? new PrismaClient({
-      log: process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"],
-    });
+    _client = g["prisma"] ?? new PrismaClient({ log: [] });
     if (process.env.NODE_ENV !== "production") g["prisma"] = _client;
     return _client!;
   } catch {
