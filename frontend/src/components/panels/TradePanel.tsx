@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { ethers } from "ethers";
 import { useApi } from "../../hooks/useApi";
 import { useWallet } from "../../context/WalletContext";
+import { useSelectedToken } from "../../context/SelectedTokenContext";
 import { DCA_CONTRACT_ADDRESS, DCA_ABI, ARB_SEPOLIA_CHAIN_ID, XLAYER_CHAIN_ID } from "../../config";
 
 const NATIVE = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE";
@@ -40,6 +41,7 @@ interface Quote {
 export function TradePanel() {
   const { get, post, loading } = useApi();
   const { address, openModal } = useWallet();
+  const { selectedToken } = useSelectedToken();
   const [from, setFrom] = useState(NATIVE);
   const [to, setTo] = useState("");
   const [amount, setAmount] = useState("");
@@ -53,6 +55,16 @@ export function TradePanel() {
   // DCA state
   const [dcaInterval, setDcaInterval] = useState("3600");
   const [dcaMsg, setDcaMsg] = useState("");
+
+  // Pre-fill TO field when a token is selected from Discover panel
+  useEffect(() => {
+    if (selectedToken?.address) {
+      setTo(selectedToken.address);
+      setQuote(null);
+      setTxHash("");
+      setSwapError("");
+    }
+  }, [selectedToken]);
 
   // Load agent wallet OKB balance
   useEffect(() => {
@@ -184,6 +196,11 @@ export function TradePanel() {
     <div className="panel h-full">
       <div className="panel-header">
         <span className="panel-title">⇄ Trade</span>
+        {selectedToken && (
+          <span className="text-xs font-mono text-terminal-cyan bg-terminal-cyan bg-opacity-10 px-2 py-0.5 rounded">
+            {selectedToken.symbol} selected
+          </span>
+        )}
         <div className="flex gap-1">
           <button
             className={`text-xs font-mono px-2 py-0.5 rounded ${tab === "swap" ? "bg-terminal-green text-terminal-bg" : "text-terminal-muted hover:text-terminal-green"}`}

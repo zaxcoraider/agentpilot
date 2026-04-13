@@ -18,14 +18,14 @@ AgentPilot is a fully autonomous AI-powered DeFi management dashboard built on X
 
 ## Project Intro
 
-Most DeFi users juggle 10+ apps to trade, research, protect themselves from rugs, find yield, and monitor their portfolio. AgentPilot collapses all of this into one autonomous agent dashboard:
+AgentPilot collapses the entire DeFi workflow into one autonomous agent dashboard:
 
-- **Discovers** hot tokens and whale movements across chains
-- **Trades** via OKX DEX with real swap quotes and execution
-- **Protects** users by scanning tokens for rug risk before buying
+- **Discovers** hot tokens and whale movements across chains (X Layer, ETH, SOL, BNB, BASE)
+- **Trades** via OKX DEX with real swap quotes and execution through the Agentic Wallet
+- **Protects** users by scanning tokens for rug risk before buying — auto-triggered on token selection
 - **Earns** by browsing and depositing into top DeFi yield products
 - **Monitors** wallet balances, price charts, and on-chain agent activity
-- **Pays** for API access via x402 micropayment protocol
+- **Pays** via x402 EIP-3009 micropayment protocol — zero gas, USDT on X Layer
 
 Every action is logged on-chain to `AgentPilotRegistry.sol` on X Layer, creating a verifiable audit trail of autonomous agent activity.
 
@@ -37,6 +37,7 @@ Every action is logged on-chain to `AgentPilotRegistry.sol` on X Layer, creating
 ┌─────────────────────────────────────────────────────────────────┐
 │                        FRONTEND (React + Wagmi)                  │
 │  Discover │ Trade │ Protect │ Earn │ Monitor │ Pay               │
+│  Click trending token → auto-fills Trade + Protect panels        │
 │  Multi-wallet: OKX, MetaMask, Coinbase, WalletConnect, Rabby     │
 └──────────────────────────┬──────────────────────────────────────┘
                            │ /api (REST)
@@ -44,17 +45,21 @@ Every action is logged on-chain to `AgentPilotRegistry.sol` on X Layer, creating
 │                    BACKEND (Express + Node.js)                    │
 │                                                                   │
 │  Routes: swap, discover, protect, earn, dca, monitor, pay        │
-│  x402 Middleware → micropayment gate for paid endpoints          │
-│  Registry Service → logs every action on-chain (X Layer)        │
-│  OnchainOS CLI → token, swap, defi, signal, market, portfolio   │
+│  x402 Middleware → EIP-3009 USDT micropayment gate               │
+│  x402Agent → auto-pays 402s via onchainos payment eip3009-sign   │
+│  Registry Service → logs every action on-chain (X Layer)         │
+│  OnchainOS CLI → token, swap, defi, signal, market, portfolio    │
 └──────┬───────────────────────┬───────────────────────────────────┘
        │                       │
 ┌──────▼──────┐    ┌───────────▼──────────────────────────────────┐
 │  MCP SERVER │    │              SMART CONTRACTS                   │
 │  7 AI tools │    │                                               │
-│  stdio/SSE  │    │  AgentPilotRegistry.sol (X Layer :196)       │
+│  stdio/SSE  │    │  AgentPilotRegistry.sol (X Layer :196)        │
 │  Claude/GPT │    │  → logAction(), getRecentActions()            │
 └─────────────┘    │                                               │
+                   │  AutoDCAHook.sol (Uniswap V4, Arb Sepolia)   │
+                   │  → createPlan(), executeDCA(), DCAReady       │
+                   │                                               │
                    │  SimpleDCA.sol (Arbitrum Sepolia :421614)     │
                    │  → createPlan(), isPlanDue(), markExecuted()  │
                    └───────────────────────────────────────────────┘
@@ -68,30 +73,28 @@ AgentPilot uses the following OKX OnchainOS CLI modules across all 6 panels:
 
 | Panel | OnchainOS Skills Used |
 |---|---|
-| Discover | `token search`, `token hot`, `signal list` |
-| Trade | `swap quote`, `swap execute`, `swap liquidity` |
-| Protect | `token risk`, `token info`, `token holders` |
-| Earn | `defi list`, `defi invest`, `defi positions` |
-| Monitor | `portfolio total-value`, `portfolio token-balances`, `market kline`, `market price` |
-| Pay | `gateway broadcast` (x402 OKB transfers) |
+| Discover | `token search`, `token hot-tokens`, `signal list` (Smart Money/KOL/Whale) |
+| Trade | `swap quote`, `swap execute`, `swap approve`, `swap check-approvals`, `swap chains`, `gateway gas`, `gateway simulate` |
+| Protect | `token advanced-info`, `swap check-approvals` |
+| Earn | `defi list`, `defi invest` |
+| Monitor | `portfolio all-balances`, `portfolio total-value`, `market kline`, `market price` |
+| Pay | `payment eip3009-sign`, `payment x402-pay`, `gateway broadcast` |
 
-**Activity Generator** (`scripts/generate-activity.ts`) runs 60+ OnchainOS operations and logs each to the registry — building legitimate on-chain transaction history for the **Most Active Agent** prize.
+**MCP Server**: `onchainos-mcp` connected at `https://web3.okx.com/api/v1/onchainos-mcp`
 
 ---
 
 ## Uniswap AI Skills Usage
 
-AgentPilot integrates Uniswap AI tools from [github.com/Uniswap/uniswap-ai](https://github.com/Uniswap/uniswap-ai):
-
-- **`pay-with-any-token`** — x402 payment challenges are resolved using Uniswap token swaps. Users can pay API fees in any ERC-20 token; Uniswap auto-converts to USDT on-chain.
-- **`uniswap-v4-hooks`** — AutoDCAHook was designed as a Uniswap V4 hook for automated DCA execution on every swap.
-- **`uniswap-trading`** — Swap routing via Uniswap's Trading API as a fallback alongside OKX DEX.
+- **`pay-with-any-token`** — x402 payment challenges resolved via Uniswap swaps
+- **`uniswap-v4-hooks`** — AutoDCAHook for automated DCA execution on every swap
+- **`swap-integration`** — Uniswap Trading API as swap fallback alongside OKX DEX
 
 ---
 
 ## MCP Server (Skills Arena)
 
-Located in `/mcp-server/`, the AgentPilot MCP server exposes **7 tools** any Claude/GPT agent can call:
+Located in `/mcp-server/`, exposes **7 tools** any Claude/GPT agent can call:
 
 | Tool | Description |
 |---|---|
@@ -103,59 +106,61 @@ Located in `/mcp-server/`, the AgentPilot MCP server exposes **7 tools** any Cla
 | `agentpilot_create_dca` | Create an on-chain DCA plan |
 | `agentpilot_pay` | Send OKB payment via x402 |
 
-**Install the skill:**
-```bash
-npx skills add agentpilot
-# or in Claude Code:
-# add to .mcp.json pointing to mcp-server/dist/index.js
+---
+
+## x402 Payment Flow (Agentic Payments)
+
+AgentPilot implements **EIP-3009 USDT micropayments** — zero gas, off-chain signatures:
+
 ```
+1. Agent hits premium endpoint → 402 Payment Required
+2. Backend returns accepts[] array (USDT, EIP-3009, X Layer)
+3. onchainos payment eip3009-sign signs USDT transfer off-chain
+4. Agent retries with X-PAYMENT: base64(authorization + signature)
+5. Backend verifies via OKX Payment API → unlocks endpoint
+6. Response returned — no gas spent, instant settlement
+```
+
+Gated endpoints: Smart Money Signals, Token Risk Scan, DeFi Products, DeFi Invest
 
 ---
 
 ## Economy Loop
 
-AgentPilot implements an autonomous **earn-pay-earn cycle**:
-
 ```
-1. Agent scans DeFi products (pays x402 → $0.001)
-2. Agent finds highest APY product (e.g. 19.3% ATOM)
-3. Agent swaps OKB → deposit token (pays x402 → $0.001)
+1. Agent scans DeFi products (pays x402 → $0.001 USDT, zero gas)
+2. Agent finds highest APY product
+3. Agent swaps OKB → deposit token (logs to registry)
 4. Agent deposits into product (earns yield)
-5. Yield accumulates → funds future x402 API payments
-6. Loop repeats every interval
+5. Yield funds future x402 payments
+6. Loop repeats — fully autonomous
 ```
-
-This creates a self-sustaining agent economy entirely on X Layer.
 
 ---
 
 ## Working Mechanics
 
+### Token Selection Flow (Cross-Panel)
+1. User sees trending tokens in Discover panel (5M/1H/4H/24H timeframes)
+2. User clicks any token → Trade panel pre-fills TO address, Protect panel auto-scans risk
+3. All panels focused on same token simultaneously
+
 ### Swap Flow
-1. User inputs FROM/TO tokens + amount
-2. Backend calls `onchainos swap quote` → returns best price
-3. User confirms → `onchainos swap execute` sends tx via OKX DEX
+1. User inputs FROM/TO tokens + amount in Trade panel
+2. Backend calls `onchainos swap quote` → best price across 500+ DEXs
+3. Agent confirms → `onchainos swap execute` sends tx via OKX DEX
 4. Registry logs the swap action on X Layer
 
 ### DCA Flow
-1. User connects wallet (OKX/MetaMask/any EVM wallet)
-2. User sets token pair + amount + interval
-3. MetaMask/wallet signs `createPlan()` on SimpleDCA contract (Arb Sepolia)
-4. Off-chain keeper checks `isPlanDue()` and triggers OKX DEX swap
-5. `markExecuted()` updates the plan state
-
-### x402 Payment Flow
-1. Client requests paid endpoint (e.g. `/api/signal/smart-money`)
-2. Middleware returns `402 Payment Required` with payment details
-3. Client sends USDT payment on X Layer
-4. Middleware verifies → unlocks endpoint
-5. Response returned with data
+1. User connects wallet → sets token pair + amount + interval
+2. Wallet signs `createPlan()` on AutoDCAHook (Uniswap V4, Arb Sepolia)
+3. Off-chain keeper checks `isPlanDue()` → triggers OKX DEX swap
+4. `DCAReady` event emitted for keepers to pick up
 
 ### Risk Scan Flow
-1. User inputs token address
-2. `onchainos token risk` returns: rug risk, LP burn %, top holder %, bundle %
-3. Risk score (0-100) displayed with color-coded threat level
-4. Approvals tab shows active token spenders to revoke
+1. Auto-triggered when token selected from Discover panel
+2. `onchainos token advanced-info` returns: rug risk, LP burn %, top holder %, bundle %
+3. Safety score (0-100) displayed with color-coded threat level
 
 ---
 
@@ -164,36 +169,12 @@ This creates a self-sustaining agent economy entirely on X Layer.
 | Contract | Network | Address |
 |---|---|---|
 | AgentPilotRegistry | X Layer (196) | `0xF8139F3ff5c6a902ad0E18e0A3Bf49eA81eA107e` |
+| AutoDCAHook | Arbitrum Sepolia (421614) | `0xF8139F3ff5c6a902ad0E18e0A3Bf49eA81eA107e` |
 | SimpleDCA | Arbitrum Sepolia (421614) | `0xF8139F3ff5c6a902ad0E18e0A3Bf49eA81eA107e` |
 
 **Agentic Wallet**: `0x60f48fcF696f77ca20fE0e06028fd25086a8F3D0`
 
-Explorer: [OKX X Layer Explorer](https://www.okx.com/explorer/xlayer/address/0xF8139F3ff5c6a902ad0E18e0A3Bf49eA81eA107e)
-
----
-
-## Project Positioning in X Layer Ecosystem
-
-AgentPilot is positioned as the **primary AI agent interface layer for X Layer**, filling three gaps:
-
-1. **No unified DeFi dashboard exists for X Layer** — AgentPilot is the first all-in-one terminal
-2. **AI agents need X Layer tooling** — The MCP server makes X Layer accessible to any AI agent
-3. **On-chain agent identity is missing** — AgentPilotRegistry.sol creates a verifiable activity log for any agent operating on X Layer
-
-As X Layer grows, AgentPilot becomes the infrastructure layer that connects AI agents to X Layer DeFi.
-
----
-
-## Tech Stack
-
-| Layer | Technology |
-|---|---|
-| Frontend | React 18, TypeScript, Tailwind CSS, Wagmi v2, Viem, Ethers.js, Recharts |
-| Backend | Node.js, Express, TypeScript, OKX OnchainOS CLI |
-| Contracts | Solidity 0.8.20, Hardhat, X Layer + Arbitrum Sepolia |
-| AI/MCP | @modelcontextprotocol/sdk, stdio transport |
-| Payments | x402 protocol, USDT on X Layer |
-| Wallet | Wagmi: MetaMask, OKX Wallet, Coinbase, WalletConnect, Rabby |
+Explorer: [OKX X Layer Explorer](https://www.oklink.com/xlayer/address/0xF8139F3ff5c6a902ad0E18e0A3Bf49eA81eA107e)
 
 ---
 
@@ -201,7 +182,7 @@ As X Layer grows, AgentPilot becomes the infrastructure layer that connects AI a
 
 ```bash
 # Clone
-git clone https://github.com/YOUR_USERNAME/agentpilot
+git clone https://github.com/zaxcoraider/agentpilot
 cd agentpilot
 
 # Install all deps
@@ -222,6 +203,19 @@ cd frontend && npm run dev
 
 # Visit http://localhost:5173
 ```
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Frontend | React 18, TypeScript, Tailwind CSS, Wagmi v2, Viem, Ethers.js, Recharts |
+| Backend | Node.js, Express, TypeScript, OKX OnchainOS CLI |
+| Contracts | Solidity 0.8.20, Hardhat, X Layer + Arbitrum Sepolia |
+| AI/MCP | @modelcontextprotocol/sdk, stdio + HTTP transport |
+| Payments | x402 protocol, EIP-3009, USDT on X Layer (zero gas) |
+| Wallet | Wagmi: MetaMask, OKX Wallet, Coinbase, WalletConnect, Rabby |
 
 ---
 

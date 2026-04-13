@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useApi } from "../../hooks/useApi";
+import { useSelectedToken } from "../../context/SelectedTokenContext";
 
 interface RiskData {
   riskControlLevel?: string;   // "1"=low "2"=medium "3"=high
@@ -39,12 +40,27 @@ function pct(val?: string | number) {
 
 export function ProtectPanel() {
   const { get, loading } = useApi();
+  const { selectedToken } = useSelectedToken();
   const [tokenAddress, setTokenAddress] = useState("");
   const [walletAddress, setWalletAddress] = useState("");
   const [risk, setRisk] = useState<RiskData | null>(null);
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [tab, setTab] = useState<"risk" | "approvals">("risk");
   const [error, setError] = useState("");
+
+  // Auto-fill and scan when token selected from Discover panel
+  useEffect(() => {
+    if (selectedToken?.address) {
+      setTokenAddress(selectedToken.address);
+      setRisk(null);
+      setError("");
+      setTab("risk");
+      // Auto-trigger scan
+      get<{ data: RiskData }>(`/security/token-risk/${selectedToken.address}?chain=xlayer`)
+        .then((r) => { if (r?.data) setRisk(r.data); });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedToken]);
 
   const scanRisk = async () => {
     const addr = tokenAddress.trim();
@@ -86,6 +102,11 @@ export function ProtectPanel() {
     <div className="panel h-full">
       <div className="panel-header">
         <span className="panel-title">⚿ Protect</span>
+        {selectedToken && (
+          <span className="text-xs font-mono text-terminal-green bg-terminal-green bg-opacity-10 px-2 py-0.5 rounded">
+            {selectedToken.symbol} scanning...
+          </span>
+        )}
         <div className="flex gap-1">
           <button
             className={`text-xs font-mono px-2 py-0.5 rounded ${tab === "risk" ? "bg-terminal-green text-terminal-bg" : "text-terminal-muted hover:text-terminal-green"}`}

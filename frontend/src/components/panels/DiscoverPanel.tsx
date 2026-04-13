@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useApi } from "../../hooks/useApi";
+import { useSelectedToken } from "../../context/SelectedTokenContext";
 
 interface Token {
   tokenSymbol?: string;
@@ -43,23 +44,28 @@ function normalizeTokens(raw: unknown): Token[] {
 
 export function DiscoverPanel() {
   const { get, loading, error } = useApi();
+  const { setSelectedToken } = useSelectedToken();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Token[]>([]);
   const [trending, setTrending] = useState<Token[]>([]);
   const [trendingError, setTrendingError] = useState("");
+  const [trendingTimeFrame, setTrendingTimeFrame] = useState("4");
   const [signals, setSignals] = useState<Signal[]>([]);
   const [signalStatus, setSignalStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [signalChain, setSignalChain] = useState("ethereum");
 
   const SIGNAL_CHAINS = [
+    { id: "xlayer",   label: "X Layer" },
     { id: "ethereum", label: "ETH" },
     { id: "solana",   label: "SOL" },
     { id: "bsc",      label: "BNB" },
     { id: "base",     label: "BASE" },
   ];
 
-  useEffect(() => {
-    get<unknown>("/token/trending?chain=xlayer").then((r) => {
+  const loadTrending = (tf = trendingTimeFrame) => {
+    setTrendingError("");
+    setTrending([]);
+    get<unknown>(`/token/trending?chain=xlayer&timeFrame=${tf}`).then((r) => {
       const tokens = normalizeTokens(r);
       if (tokens.length > 0) {
         setTrending(tokens.slice(0, 8));
@@ -67,6 +73,10 @@ export function DiscoverPanel() {
         setTrendingError("No trending tokens found on X Layer");
       }
     });
+  };
+
+  useEffect(() => {
+    loadTrending();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -144,7 +154,20 @@ export function DiscoverPanel() {
 
         {/* Trending */}
         <div>
-          <p className="data-label mb-1">HOT TOKENS · X LAYER</p>
+          <div className="flex items-center justify-between mb-1">
+            <p className="data-label">HOT TOKENS · X LAYER</p>
+            <div className="flex items-center gap-1">
+              {[{ id: "1", label: "5M" }, { id: "2", label: "1H" }, { id: "3", label: "4H" }, { id: "4", label: "24H" }].map((tf) => (
+                <button
+                  key={tf.id}
+                  className={`text-xs font-mono px-1.5 py-0.5 rounded ${trendingTimeFrame === tf.id ? "bg-terminal-green text-terminal-bg" : "text-terminal-muted hover:text-terminal-green"}`}
+                  onClick={() => { setTrendingTimeFrame(tf.id); loadTrending(tf.id); }}
+                >
+                  {tf.label}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="space-y-1">
             {trending.length === 0 && !trendingError && (
               <p className="text-xs text-terminal-muted font-mono">Loading...</p>
@@ -153,13 +176,28 @@ export function DiscoverPanel() {
               <p className="text-xs text-terminal-muted font-mono">{trendingError}</p>
             )}
             {trending.map((t, i) => (
-              <div key={i} className="data-row">
+              <div
+                key={i}
+                className="data-row cursor-pointer hover:bg-terminal-green hover:bg-opacity-5 rounded px-1 transition-colors"
+                onClick={() => {
+                  if (t.tokenContractAddress) {
+                    setSelectedToken({
+                      address: t.tokenContractAddress,
+                      symbol: t.tokenSymbol || "?",
+                      name: t.tokenName || "",
+                      price: Number(t.price || 0),
+                    });
+                  }
+                }}
+                title={t.tokenContractAddress ? `Select ${t.tokenSymbol} — pre-fills Trade & Protect panels` : ""}
+              >
                 <span className="text-terminal-muted font-mono text-xs w-4">{i + 1}</span>
-                <span className="text-xs font-mono text-terminal-text flex-1 ml-2">{t.tokenSymbol || "?"}</span>
+                <span className="text-xs font-mono text-terminal-cyan flex-1 ml-2">{t.tokenSymbol || "?"}</span>
                 <span className="text-xs font-mono text-terminal-muted flex-1 truncate">{t.tokenName || ""}</span>
                 <span className={`text-xs font-mono ${Number(t.change) >= 0 ? "text-terminal-green" : "text-terminal-red"}`}>
                   {Number(t.change) >= 0 ? "+" : ""}{Number(t.change || 0).toFixed(2)}%
                 </span>
+                <span className="text-xs text-terminal-muted opacity-40">→</span>
               </div>
             ))}
           </div>
@@ -198,11 +236,28 @@ export function DiscoverPanel() {
           {signals.map((s, i) => {
             const sold = Number(s.soldRatioPercent || 0);
             const wallet = s.triggerWalletAddress?.split(",")[0] || "";
+            const explorerBase = signalChain === "xlayer"
+              ? "https://www.oklink.com/xlayer/address"
+              : signalChain === "solana"
+                ? "https://solscan.io/account"
+                : `https://www.oklink.com/${signalChain}/address`;
+            const explorerUrl = wallet ? `${explorerBase}/${wallet}` : null;
+
             return (
               <div key={i} className="data-row">
-                <span className="text-xs font-mono text-terminal-muted">
-                  {wallet.slice(0, 8)}...
-                </span>
+                {explorerUrl ? (
+                  <a
+                    href={explorerUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs font-mono text-terminal-cyan hover:underline hover:text-terminal-green transition-colors"
+                    title={wallet}
+                  >
+                    {wallet.slice(0, 6)}...{wallet.slice(-4)}
+                  </a>
+                ) : (
+                  <span className="text-xs font-mono text-terminal-muted">—</span>
+                )}
                 <span className="text-xs font-mono text-terminal-cyan font-bold">
                   {s.token?.symbol || "?"}
                 </span>

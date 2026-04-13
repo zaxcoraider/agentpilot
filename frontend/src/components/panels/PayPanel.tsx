@@ -60,7 +60,7 @@ export function PayPanel() {
             </div>
             <div>
               <p className="text-xs text-terminal-muted font-mono">Total spent</p>
-              <p className="text-sm font-mono font-bold text-terminal-cyan">{stats?.totalSpentOKB ?? "—"} OKB</p>
+              <p className="text-sm font-mono font-bold text-terminal-cyan">${(stats as unknown as { totalSpentUSDT?: string })?.totalSpentUSDT ?? stats?.totalSpentOKB ?? "—"} USDT</p>
             </div>
             <div>
               <p className="text-xs text-terminal-muted font-mono">API calls</p>

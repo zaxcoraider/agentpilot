@@ -13,11 +13,13 @@ router.get("/token/search", async (req: Request, res: Response) => {
   res.json(data);
 });
 
-// FREE — GET /api/token/trending?chain=xlayer
+// FREE — GET /api/token/trending?chain=xlayer&timeFrame=4
+// timeFrame: 1=5min, 2=1h, 3=4h, 4=24h
 router.get("/token/trending", async (req: Request, res: Response) => {
-  const { chain = "xlayer" } = req.query as Record<string, string>;
-  const data = await run(["token", "hot-tokens", "--chain", chain]);
-  logAction("scan", `trending:${chain}`);
+  const { chain = "xlayer", timeFrame = "4" } = req.query as Record<string, string>;
+  const args = ["token", "hot-tokens", "--chain", chain, "--time-frame", timeFrame];
+  const data = await run(args);
+  logAction("scan", `trending:${chain}:${timeFrame}`);
   res.json(data);
 });
 

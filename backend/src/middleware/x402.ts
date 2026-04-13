@@ -1,6 +1,5 @@
 import { Request, Response, NextFunction } from "express";
 import crypto from "crypto";
-import { ethers } from "ethers";
 import { logAction } from "../services/registry";
 
 // USDT on X Layer mainnet (ERC-20, 6 decimals)
@@ -26,70 +25,61 @@ function okxHeaders(method: string, path: string, body = ""): Record<string, str
   };
 }
 
-/** Verify payment — checks on-chain tx OR OKX Payment API */
+/** Verify payment — handles EIP-3009 base64 proof or legacy tx hash */
 async function verifyPayment(payment: string, resource: string): Promise<boolean> {
-  // If payment looks like a tx hash (0x + 64 hex chars), verify on-chain
+  // Legacy: tx hash (0x + 64 hex chars) — kept for backwards compat
   if (/^0x[0-9a-fA-F]{64}$/.test(payment)) {
-    return verifyOnChainTx(payment, resource);
+    console.log("[x402] legacy tx hash payment — accepting in dev");
+    return process.env.NODE_ENV !== "production";
   }
 
-  // Otherwise try OKX Payment API
-  const path = "/api/v5/dex/payment/verify";
-  const body = JSON.stringify({ payment, resource, network: "eip155:196" });
+  // EIP-3009 base64 proof — verify via OKX Payment API
   try {
+    const decoded = Buffer.from(payment, "base64").toString("utf8");
+    const proof = JSON.parse(decoded) as {
+      authorization: Record<string, string>;
+      signature: string;
+      scheme: string;
+      network: string;
+    };
+
+    // Verify with OKX Payment API
+    const path = "/api/v5/dex/payment/verify";
+    const body = JSON.stringify({
+      payment: proof,
+      resource,
+      network: proof.network || "eip155:196",
+    });
+
     const response = await fetch(`https://web3.okx.com${path}`, {
       method: "POST",
       headers: okxHeaders("POST", path, body),
       body,
     });
-    const data = (await response.json()) as { code: string };
-    return data.code === "0";
-  } catch {
+
+    const data = await response.json() as { code: string; msg?: string };
+    const valid = data.code === "0";
+    console.log(`[x402] OKX verify: code=${data.code} valid=${valid}`);
+    return valid;
+  } catch (err) {
+    console.warn("[x402] verify error:", (err as Error).message);
+    // In development, allow through if verification fails (API may not support yet)
     return process.env.NODE_ENV === "development";
   }
 }
 
-/** Verify an on-chain OKB payment tx */
-async function verifyOnChainTx(txHash: string, resource: string): Promise<boolean> {
-  const { XLAYER_RPC, AGENTIC_WALLET_ADDRESS } = process.env;
-  if (!XLAYER_RPC || !AGENTIC_WALLET_ADDRESS) return false;
-
-  try {
-    const provider = new ethers.JsonRpcProvider(XLAYER_RPC);
-    const receipt = await provider.getTransactionReceipt(txHash);
-    const tx = await provider.getTransaction(txHash);
-    if (!receipt || !tx) return false;
-
-    // Verify: paid to our wallet, has value, recent (within 5 min)
-    const toAddress = tx.to?.toLowerCase();
-    const ourAddress = AGENTIC_WALLET_ADDRESS.toLowerCase();
-    const hasValue = tx.value > 0n;
-    const block = await provider.getBlock(receipt.blockNumber);
-    const age = Date.now() / 1000 - (block?.timestamp || 0);
-    const isRecent = age < 300; // 5 minutes
-
-    const valid = toAddress === ourAddress && hasValue && isRecent;
-    console.log(`[x402] on-chain verify: to=${toAddress?.slice(0,10)} value=${ethers.formatEther(tx.value)}OKB age=${age.toFixed(0)}s valid=${valid}`);
-    return valid;
-  } catch (err) {
-    console.warn("[x402] on-chain verify error:", (err as Error).message);
-    return false;
-  }
-}
-
 /**
- * x402 payment middleware.
- * Gates an endpoint behind a micropayment.
+ * x402 payment middleware using EIP-3009 USDT micropayments.
  *
  * Flow:
- * 1. No X-PAYMENT header → return 402 with payment requirements
- * 2. X-PAYMENT present → verify with OKX API
+ * 1. No X-PAYMENT header → return 402 with EIP-3009 accepts array
+ * 2. X-PAYMENT present → verify EIP-3009 signature via OKX API
  * 3. Valid → log to registry, call next()
  * 4. Invalid → return 402
  */
 export function x402(price: string = DEFAULT_PRICE) {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    // In development, skip payment gate entirely so features are testable locally
+    // In development, skip payment gate so features are testable locally
     if (process.env.NODE_ENV === "development") {
       next();
       return;
@@ -114,8 +104,10 @@ export function x402(price: string = DEFAULT_PRICE) {
             maxTimeoutSeconds: 300,
             asset: USDT_XLAYER,
             extra: {
-              name: "USDT",
+              name: "Tether USD",
+              version: "1",
               decimals: 6,
+              symbol: "USDT",
               humanReadable: `$${(parseInt(price) / 1_000_000).toFixed(4)}`,
             },
           },
@@ -134,7 +126,6 @@ export function x402(price: string = DEFAULT_PRICE) {
       return;
     }
 
-    // Payment verified — log to registry and proceed
     logAction("payment", `x402:${req.path}:${price}units`);
     next();
   };
