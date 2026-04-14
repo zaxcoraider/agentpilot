@@ -170,7 +170,7 @@ export async function runHttp(args: string[]): Promise<unknown> {
 
   // ── defi ───────────────────────────────────────────────────────────────────
   if (cmd === "defi") {
-    if (sub === "list") return post(`/api/v5/defi/explore/product/list`, {});
+    if (sub === "list") return post(`/api/v5/defi/explore/product/list`, { pageNum: "1", pageSize: "20" });
     if (sub === "invest") {
       return get(`/api/v5/defi/invest/transaction?investmentId=${flags["investment-id"]}&investAddress=${flags.address}&tokenAddress=${flags.token}&investAmount=${flags.amount}&chainIndex=${ci}`);
     }
