@@ -1,10 +1,11 @@
 /**
  * AI Agent Brain
- * Rule-based signal analysis engine — no external API key required
- * Analyzes live whale signals and decides whether to execute trades
- * via the OKX TEE agentic wallet autonomously
+ * Uses Claude Haiku to analyze live whale signals and decide trades
+ * Falls back to rule-based engine if ANTHROPIC_API_KEY is not set
+ * Executes via OKX TEE agentic wallet — fully autonomous
  */
 
+import Anthropic from "@anthropic-ai/sdk";
 import { run } from "./onchainos";
 import { agentSwap, AGENTIC_WALLET } from "./agentWallet";
 import { logAction } from "./registry";
@@ -47,6 +48,51 @@ export async function runAiDecision(autoExecute = false): Promise<AiDecision> {
     ]) as { data?: { details?: Array<{ tokenAssets?: Array<{ symbol: string; balance: string; usdValue: string }> }> } };
     const tokens = balanceData?.data?.details?.[0]?.tokenAssets || [];
     const balanceSummary = tokens.map(t => `${t.symbol}: ${t.balance} ($${Number(t.usdValue).toFixed(2)})`).join(", ") || "No balance";
+
+    // 3. Claude AI brain (if API key set) — else rule-based fallback
+    if (process.env.ANTHROPIC_API_KEY) {
+      const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+      const message = await anthropic.messages.create({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 400,
+        messages: [{
+          role: "user",
+          content: `You are an autonomous DeFi agent on X Layer. Analyze these whale signals and decide a trade.
+
+AGENT BALANCE: ${balanceSummary}
+SIGNALS: ${JSON.stringify(signals.slice(0, 5))}
+
+X Layer tokens: OKB=0xEeee...eEeE, USDT=0x1E4a5963aBFD975d8c9021ce480b42188849D41d, USDC=0x74b7f16337b8972027f6196a17a631ac6de26d22
+Rules: BUY only if strong accumulation (soldRatio<30%, amountUsd>$5K, multiple wallets). Max 15% of OKB balance. WAIT if uncertain.
+
+Reply ONLY with valid JSON (no markdown):
+{"action":"BUY"|"HOLD"|"WAIT","token":"symbol","tokenAddress":"0x...","fromTokenAddress":"0x...","amount":"0.001","confidence":"HIGH"|"MEDIUM"|"LOW","reasoning":"2 sentences"}`,
+        }],
+      });
+      const text = (message.content[0] as { text: string }).text.trim();
+      try {
+        const p = JSON.parse(text) as {
+          action: AiDecision["action"]; token?: string; tokenAddress?: string;
+          fromTokenAddress?: string; amount?: string;
+          confidence: AiDecision["confidence"]; reasoning: string;
+        };
+        const decision: AiDecision = {
+          action: p.action, token: p.token, tokenAddress: p.tokenAddress,
+          amount: p.amount, reasoning: p.reasoning, confidence: p.confidence,
+          signals, executed: false, timestamp: Date.now(),
+        };
+        if (autoExecute && decision.action === "BUY" && decision.tokenAddress && decision.amount) {
+          try {
+            const from = p.fromTokenAddress || "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE";
+            const { txHash } = await agentSwap(from, decision.tokenAddress, decision.amount, "xlayer");
+            decision.executed = true; decision.txHash = txHash;
+            logAction("trade", `ai-claude:${decision.action}:${decision.token}`);
+          } catch (e) { decision.reasoning += ` [Exec failed: ${(e as Error).message}]`; }
+        }
+        lastDecision = decision;
+        return decision;
+      } catch { /* fall through to rule-based */ }
+    }
 
     // 3. Rule-based AI engine — analyze signals
     interface SignalItem {
