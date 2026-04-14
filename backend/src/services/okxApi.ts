@@ -83,7 +83,9 @@ export async function runHttp(args: string[]): Promise<unknown> {
   if (cmd === "token") {
     if (sub === "search") {
       const q = flags.query || flags.address || "";
-      return get(`/api/v6/dex/market/token/search?tokenNameOrAddress=${encodeURIComponent(q)}&chainIndex=${ci}`);
+      // chainIndex is optional for search — omitting it gives broader results
+      const chainParam = ci && ci !== "196" ? `&chainIndex=${ci}` : "";
+      return get(`/api/v6/dex/market/token/search?tokenNameOrAddress=${encodeURIComponent(q)}${chainParam}`);
     }
     if (sub === "hot-tokens") {
       const tf = flags["time-frame"] || "4";

@@ -80,16 +80,22 @@ export function MonitorPanel() {
   }, [get, connectedWallet]);
 
   const loadKline = useCallback(async () => {
-    const r = await get<{ data: Array<{ ts?: number; c?: string | number }> }>(
+    const r = await get<{ data: unknown[] }>(
       `/market/kline/${OKB_ADDRESS}?chain=xlayer&bar=1H&limit=24`
     );
     if (r?.data && Array.isArray(r.data)) {
-      setKline(
-        r.data.map((d) => ({
-          time: new Date(Number(d.ts || 0)).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          price: Number(d.c || 0),
-        }))
-      );
+      // OKX candle format: [timestamp, open, high, low, close, vol, volCcy, confirm]
+      const points = r.data
+        .map((d) => {
+          const arr = d as string[];
+          return {
+            time: new Date(Number(arr[0])).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            price: Number(arr[4] || 0), // close price at index 4
+          };
+        })
+        .filter((p) => p.price > 0)
+        .reverse(); // oldest → newest for chart
+      if (points.length > 0) setKline(points);
     }
   }, [get]);
 

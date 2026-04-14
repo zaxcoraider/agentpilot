@@ -8,12 +8,27 @@ const router = Router();
 
 // FREE — GET /api/token/search?query=OKB&chain=xlayer
 router.get("/token/search", async (req: Request, res: Response) => {
+  const { query = "", chain = "xlayer" } = req.query as Record<string, string>;
+  if (!query.trim()) { res.json({ ok: true, data: [] }); return; }
+
+  // Try chain-specific search first, then fall back to global search (no chainIndex)
+  const chains = chain === "xlayer" ? [chain, "ethereum"] : [chain];
+  for (const c of chains) {
+    try {
+      const data = await run(["token", "search", "--query", query, "--chain", c]) as { ok?: boolean; data?: unknown[] };
+      if (data?.ok && Array.isArray(data.data) && data.data.length > 0) {
+        logAction("search", query);
+        res.json(data);
+        return;
+      }
+    } catch { /* try next */ }
+  }
+  // Global search without chain filter
   try {
-    const { query = "", chain = "xlayer" } = req.query as Record<string, string>;
-    const data = await run(["token", "search", "--query", query, "--chain", chain]);
+    const data = await run(["token", "search", "--query", query, "--chain", "ethereum"]);
     logAction("search", query);
     res.json(data);
-  } catch (_err: unknown) {
+  } catch {
     res.json({ ok: true, data: [] });
   }
 });
@@ -49,23 +64,42 @@ async function enrichTokenPrices(tokens: typeof XLAYER_TOKENS) {
   }
 }
 
+// Chain name → chainIndex (for filtering OKX hot-token results)
+const CHAIN_INDEX: Record<string, string> = {
+  xlayer: "196", ethereum: "1", eth: "1",
+  solana: "501", bsc: "56", bnb: "56",
+  polygon: "137", base: "8453",
+};
+
 // FREE — GET /api/token/trending?chain=xlayer&timeFrame=4
 router.get("/token/trending", async (req: Request, res: Response) => {
+  const { chain = "xlayer", timeFrame = "4" } = req.query as Record<string, string>;
+
+  // X Layer — OKX hot-token API doesn't have xlayer-specific trending data,
+  // so always use enriched fallback (with live OKB price from balance API)
+  if (chain === "xlayer") {
+    const enriched = await enrichTokenPrices(XLAYER_TOKENS);
+    res.json({ ok: true, data: enriched });
+    return;
+  }
+
   try {
-    const { chain = "xlayer", timeFrame = "4" } = req.query as Record<string, string>;
     const args = ["token", "hot-tokens", "--chain", chain, "--time-frame", timeFrame];
-    const data = await run(args) as { ok?: boolean; data?: unknown[] };
+    const data = await run(args) as { ok?: boolean; data?: Array<Record<string, unknown>> };
     logAction("scan", `trending:${chain}:${timeFrame}`);
-    // If API returned data but prices are 0, enrich with live prices
+
     if (data?.ok && Array.isArray(data.data) && data.data.length > 0) {
-      res.json(data);
+      // Filter to only tokens matching the requested chain
+      const expectedChainIndex = CHAIN_INDEX[chain.toLowerCase()];
+      const filtered = expectedChainIndex
+        ? data.data.filter((t) => !t.chainIndex || t.chainIndex === expectedChainIndex)
+        : data.data;
+      res.json({ ok: true, data: filtered.length > 0 ? filtered : data.data });
     } else {
       throw new Error("no data");
     }
-  } catch (_err: unknown) {
-    // Market data not available via direct HTTP — return known tokens with live prices
-    const enriched = await enrichTokenPrices(XLAYER_TOKENS);
-    res.json({ ok: true, data: enriched });
+  } catch {
+    res.json({ ok: true, data: [] });
   }
 });
 

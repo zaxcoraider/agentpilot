@@ -12,6 +12,8 @@ interface Token {
   volume?: string | number;
   holders?: string | number;
   liquidity?: string | number;
+  logoUrl?: string;
+  riskLevel?: string;
 }
 
 interface Signal {
@@ -44,6 +46,8 @@ function normalizeTokens(raw: unknown): Token[] {
     volume: Number(t.volume ?? t.volume24h ?? 0),
     holders: Number(t.holders ?? 0),
     liquidity: Number(t.liquidity ?? 0),
+    logoUrl: String(t.tokenLogoUrl || t.logoUrl || ""),
+    riskLevel: String(t.riskLevelControl ?? t.riskControlLevel ?? ""),
   }));
 }
 
@@ -224,7 +228,10 @@ export function DiscoverPanel() {
                 title={t.tokenContractAddress ? `Select ${t.tokenSymbol}` : ""}
               >
                 <span className="text-terminal-muted font-mono text-xs w-4">{i + 1}</span>
-                <span className="text-xs font-mono text-terminal-cyan w-16 ml-1 truncate">{t.tokenSymbol || "?"}</span>
+                {t.logoUrl ? (
+                  <img src={t.logoUrl} alt={t.tokenSymbol} className="w-4 h-4 rounded-full flex-shrink-0" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
+                ) : null}
+                <span className="text-xs font-mono text-terminal-cyan w-14 truncate">{t.tokenSymbol || "?"}</span>
                 <span className="text-xs font-mono text-terminal-green w-20 truncate">${Number(t.price || 0).toFixed(4)}</span>
                 <span className={`text-xs font-mono w-16 ${Number(t.change) >= 0 ? "text-terminal-green" : "text-terminal-red"}`}>
                   {Number(t.change) >= 0 ? "+" : ""}{Number(t.change || 0).toFixed(1)}%
@@ -232,7 +239,8 @@ export function DiscoverPanel() {
                 {Number(t.marketCap) > 0 && (
                   <span className="text-xs text-terminal-muted font-mono">{fmtNum(Number(t.marketCap))}</span>
                 )}
-                <span className="text-xs text-terminal-muted opacity-30">→</span>
+                {t.riskLevel === "1" && <span className="text-xs text-terminal-green opacity-60">✓</span>}
+                {t.riskLevel === "3" && <span className="text-xs text-terminal-red opacity-80">!</span>}
               </div>
             ))}
           </div>
