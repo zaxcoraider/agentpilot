@@ -115,7 +115,7 @@ export function TradePanel() {
     }
   };
 
-  // User wallet swap — backend builds tx, MetaMask signs
+  // User wallet swap — backend builds tx, ethers BrowserProvider signs
   const userSwap = async () => {
     if (!from || !to || !amount) return;
     if (!address) { openModal(); return; }
@@ -133,19 +133,24 @@ export function TradePanel() {
 
       setSwapStatus("Confirm in wallet...");
       const rawValue = txData.value || "0";
-      const txParams = {
+      const hexValue = rawValue.startsWith("0x") ? rawValue : "0x" + BigInt(rawValue).toString(16);
+      // Pass only essential fields — let the wallet manage nonce and gas estimation
+      const txParams: Record<string, string> = {
         from: address,
-        to: txData.to,
-        data: txData.data || "0x",
-        value: rawValue.startsWith("0x") ? rawValue : "0x" + BigInt(rawValue).toString(16),
-        ...(txData.gas ? { gas: txData.gas.startsWith?.("0x") ? txData.gas : "0x" + BigInt(txData.gas).toString(16) } : {}),
+        to: txData.to as string,
+        data: (txData.data as string) || "0x",
+        value: hexValue,
       };
       const hash = await window.ethereum.request({ method: "eth_sendTransaction", params: [txParams] }) as string;
       setTxHash(hash);
       setSwapStatus("Swap submitted!");
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setSwapError(msg.includes("user rejected") ? "Cancelled" : msg.slice(0, 120));
+      console.error("[userSwap] error:", err);
+      const code = (err as any)?.code;
+      const msg = (err as any)?.message || (err as any)?.reason || String(err);
+      const inner = (err as any)?.data?.message || (err as any)?.error?.message || "";
+      if (code === 4001) { setSwapError("Transaction rejected by wallet"); }
+      else { setSwapError((inner || msg).slice(0, 160)); }
       setSwapStatus("");
     }
   };

@@ -90,7 +90,7 @@ export function DiscoverPanel() {
   const loadSignals = async (chain = signalChain) => {
     setSignalStatus("loading");
     setSignals([]);
-    const r = await get<Signal[] | { data?: Signal[] }>(`/signal/smart-money?chain=${chain}`);
+    const r = await get<Signal[] | { data?: Signal[] }>(`/signal/smart-money-agent?chain=${chain}`);
     const list: Signal[] = Array.isArray(r)
       ? r
       : Array.isArray((r as { data?: Signal[] })?.data)
@@ -228,7 +228,7 @@ export function DiscoverPanel() {
             <p className="text-xs text-terminal-muted font-mono">Select a chain to load whale activity</p>
           )}
           {signalStatus === "error" && (
-            <p className="text-xs text-terminal-red font-mono">No signal data returned for X Layer</p>
+            <p className="text-xs text-terminal-red font-mono">No signal data returned for {signalChain} — try Ethereum or Solana</p>
           )}
           {signalStatus === "done" && signals.length === 0 && (
             <p className="text-xs text-terminal-muted font-mono">No signals found</p>

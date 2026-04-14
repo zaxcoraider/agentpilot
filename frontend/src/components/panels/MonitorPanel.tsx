@@ -34,13 +34,15 @@ const AGENTIC_WALLET = import.meta.env.VITE_AGENTIC_WALLET || "0x60f48fcF696f77c
 const OKB_ADDRESS = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE";
 
 export function MonitorPanel() {
-  const { get } = useApi();
+  const { get, post } = useApi();
   const { address: connectedWallet } = useWallet();
   const [balances, setBalances] = useState<Balance[]>([]);
   const [actions, setActions] = useState<Action[]>([]);
   const [kline, setKline] = useState<KlinePoint[]>([]);
   const [totalValue, setTotalValue] = useState("—");
   const [tab, setTab] = useState<"balance" | "chart" | "actions">("balance");
+  const [agentDecision, setAgentDecision] = useState<{ action: string; symbol?: string; score?: number; reason: string; txHash?: string; timestamp: number } | null>(null);
+  const [agentPaused, setAgentPaused] = useState(false);
 
   const loadBalances = useCallback(async () => {
     const wallet = connectedWallet || AGENTIC_WALLET;
@@ -73,37 +75,54 @@ export function MonitorPanel() {
     }
   }, [get]);
 
+  const [actionCount, setActionCount] = useState<number | null>(null);
+
   const loadActions = useCallback(async () => {
-    if (!window.ethereum) return;
-    // Use connected wallet if available, else fall back to agentic wallet
-    const target = connectedWallet || AGENTIC_WALLET;
     try {
-      const provider = new ethers.BrowserProvider(window.ethereum);
-      const contract = new ethers.Contract(CONTRACT_ADDRESS, REGISTRY_ABI, provider);
-      const raw = await contract.getRecentActions(target, 10);
-      setActions(
-        raw.map((a: Action) => ({
-          agentAddress: String(a.agentAddress || ""),
-          actionType: String(a.actionType || ""),
-          details: String(a.details || ""),
-          timestamp: Number(a.timestamp || 0),
-        }))
-      );
-    } catch { /* no wallet connected */ }
-  }, [connectedWallet]);
+      const provider = new ethers.JsonRpcProvider("https://rpc.xlayer.tech");
+      // getTransactionCount = nonce = total txns sent by agent wallet
+      const count = await provider.getTransactionCount(ethers.getAddress(AGENTIC_WALLET));
+      setActionCount(count);
+    } catch (e) { console.warn("[actions] error:", e); }
+  }, []);
+
+  const loadDecision = useCallback(async () => {
+    const r = await get<{ data: typeof agentDecision; paused: boolean }>("/agent/decision");
+    if (r?.data) setAgentDecision(r.data);
+    if (typeof r?.paused === "boolean") setAgentPaused(r.paused);
+  }, [get]);
+
+  const toggleAgent = async () => {
+    const adminKey = import.meta.env.VITE_ADMIN_KEY;
+    if (!adminKey) { alert("VITE_ADMIN_KEY not configured"); return; }
+    if (agentPaused) {
+      await post("/agent/resume", { adminKey });
+      setAgentPaused(false);
+    } else {
+      await post("/agent/pause", { adminKey });
+      setAgentPaused(true);
+    }
+  };
 
   useEffect(() => {
     loadBalances();
     loadKline();
     loadActions();
-    const interval = setInterval(() => { loadBalances(); loadActions(); }, 30000);
+    loadDecision();
+    const interval = setInterval(() => { loadBalances(); loadActions(); loadDecision(); }, 30000);
     return () => clearInterval(interval);
-  }, [loadBalances, loadKline, loadActions, connectedWallet]);
+  }, [loadBalances, loadKline, loadActions, loadDecision, connectedWallet]);
 
   return (
     <div className="panel h-full">
       <div className="panel-header">
         <span className="panel-title">◉ Monitor</span>
+        <button
+          onClick={toggleAgent}
+          className={`text-xs font-mono px-2 py-0.5 rounded border ${agentPaused ? "border-terminal-green text-terminal-green hover:bg-terminal-green hover:bg-opacity-10" : "border-terminal-red text-terminal-red hover:bg-terminal-red hover:bg-opacity-10"}`}
+        >
+          {agentPaused ? "▶ RESUME" : "⏸ PAUSE"}
+        </button>
         <div className="flex gap-1">
           {(["balance", "chart", "actions"] as const).map((t) => (
             <button
@@ -117,6 +136,27 @@ export function MonitorPanel() {
         </div>
       </div>
       <div className="panel-body">
+        {/* Agent brain status */}
+        {(agentDecision || agentPaused) && (
+          <div className={`border rounded p-2 mb-2 text-xs font-mono space-y-0.5 ${agentPaused ? "border-terminal-red bg-terminal-red bg-opacity-5" : agentDecision?.action === "BUY" ? "border-terminal-green bg-terminal-green bg-opacity-5" : "border-terminal-border bg-terminal-bg"}`}>
+            <div className="flex items-center justify-between">
+              <span className={`font-bold ${agentPaused ? "text-terminal-red" : agentDecision?.action === "BUY" ? "text-terminal-green" : agentDecision?.action === "HOLD" ? "text-terminal-yellow" : "text-terminal-muted"}`}>
+                🤖 AGENT · {agentPaused ? "PAUSED" : `${agentDecision?.action}${agentDecision?.symbol ? ` ${agentDecision.symbol}` : ""}`}
+              </span>
+              <span className="text-terminal-muted">{agentDecision ? new Date(agentDecision.timestamp).toLocaleTimeString() : ""}</span>
+            </div>
+            {agentDecision?.score !== undefined && (
+              <span className="text-terminal-cyan">score: {agentDecision.score.toFixed(1)}</span>
+            )}
+            {agentDecision && <p className="text-terminal-muted truncate">{agentDecision.reason}</p>}
+            {agentDecision?.txHash && (
+              <a href={`https://www.oklink.com/xlayer/tx/${agentDecision.txHash}`} target="_blank" rel="noopener noreferrer" className="text-terminal-cyan hover:underline truncate block">
+                tx: {agentDecision.txHash.slice(0, 20)}...
+              </a>
+            )}
+          </div>
+        )}
+
         {tab === "balance" && (
           <div className="space-y-2">
             <div className="border border-terminal-green border-opacity-30 rounded p-2 bg-terminal-green bg-opacity-5">
@@ -170,12 +210,21 @@ export function MonitorPanel() {
         {tab === "actions" && (
           <div className="space-y-1">
             <p className="data-label mb-1">RECENT ACTIONS · ON-CHAIN</p>
-            {actions.length === 0 && (
-              <p className="text-xs text-terminal-muted font-mono">
-                {connectedWallet
-                  ? `No on-chain actions for ${connectedWallet.slice(0, 8)}...`
-                  : "Connect wallet to load on-chain actions"}
-              </p>
+            {actionCount !== null && (
+              <div className="border border-terminal-green border-opacity-30 rounded p-2 bg-terminal-green bg-opacity-5 mb-2">
+                <p className="text-xs text-terminal-muted font-mono">TOTAL ON-CHAIN ACTIONS</p>
+                <p className="text-2xl font-mono font-bold text-terminal-green">{actionCount.toLocaleString()}</p>
+                <a
+                  href={`https://www.oklink.com/xlayer/address/${AGENTIC_WALLET}`}
+                  target="_blank" rel="noopener noreferrer"
+                  className="text-xs font-mono text-terminal-cyan hover:underline"
+                >
+                  View on OKLink →
+                </a>
+              </div>
+            )}
+            {actions.length === 0 && actionCount === null && (
+              <p className="text-xs text-terminal-muted font-mono">Loading...</p>
             )}
             {actions.map((a, i) => (
               <div key={i} className="border border-terminal-border rounded p-2 bg-terminal-bg space-y-0.5">

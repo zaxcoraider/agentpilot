@@ -14,11 +14,20 @@ import dcaRoutes from "./routes/dca";
 import analyticsRoutes from "./routes/analytics";
 import { getPaymentStats } from "./services/x402Agent";
 import { db } from "./services/db";
+import { startAutonomousAgent } from "./services/autonomousAgent";
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-app.use(cors());
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "http://localhost:5173").split(",").map(s => s.trim());
+app.use(cors({
+  origin: (origin, cb) => {
+    // Allow requests with no origin (curl/Postman in dev) only in development
+    if (!origin) return cb(null, process.env.NODE_ENV !== "production");
+    cb(null, ALLOWED_ORIGINS.includes(origin));
+  },
+  credentials: true,
+}));
 app.use(express.json());
 
 // Health check
@@ -50,6 +59,7 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 const server = app.listen(PORT, () => {
   console.log(`AgentPilot API running on http://localhost:${PORT}`);
   console.log(`Contract: ${process.env.CONTRACT_ADDRESS || "not deployed yet"}`);
+  startAutonomousAgent();
 });
 
 // Graceful shutdown

@@ -84,8 +84,12 @@ export function EarnPanel() {
       }
       setTxHash(lastHash);
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setError(`Transaction failed: ${msg.slice(0, 120)}`);
+      const msg = (err as any)?.message || (err as any)?.reason || String(err);
+      if (msg.includes("user rejected") || msg.includes("denied") || (err as any)?.code === 4001) {
+        setError("Transaction cancelled");
+      } else {
+        setError(`Transaction failed: ${msg.slice(0, 120)}`);
+      }
     }
   };
 
@@ -175,7 +179,10 @@ export function EarnPanel() {
               {loading ? "PROCESSING..." : "DEPOSIT VIA ONCHAINOS"}
             </button>
             {txHash && (
-              <p className="text-xs font-mono text-terminal-green break-all">TX: {txHash}</p>
+              <a href={`https://www.oklink.com/xlayer/tx/${txHash}`} target="_blank" rel="noopener noreferrer"
+                className="text-xs font-mono text-terminal-green hover:underline break-all block">
+                TX: {txHash}
+              </a>
             )}
           </div>
         )}

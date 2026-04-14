@@ -3,6 +3,7 @@ import { run } from "../services/onchainos";
 import { logAction } from "../services/registry";
 import { recordAction, getAgentId } from "../services/actionLogger";
 import { ActionType } from "../services/actionLogger";
+import { x402 } from "../middleware/x402";
 
 const router = Router();
 
@@ -129,10 +130,17 @@ router.post("/swap/execute", async (req: Request, res: Response) => {
   }
 });
 
+// Rate limiting for agent-execute: 1 swap per IP per 10 minutes, max 5 swaps/day globally
+const ipLastSwap = new Map<string, number>();
+let dailySwapCount = 0;
+let dailySwapReset = Date.now() + 86400_000;
+const DAILY_SWAP_LIMIT = 5;
+const IP_COOLDOWN_MS = 10 * 60 * 1000; // 10 minutes
+
 // POST /api/swap/agent-execute
 // One-shot: quote → approve (if needed) → swap → sign & broadcast → txHash
 // Uses onchainos swap execute with agent wallet
-router.post("/swap/agent-execute", async (req: Request, res: Response) => {
+router.post("/swap/agent-execute", x402(), async (req: Request, res: Response) => {
   const { from, to, amount, readableAmount, chain = "xlayer", slippage } = req.body;
 
   if (!from || !to || (!amount && !readableAmount)) {
@@ -145,6 +153,30 @@ router.post("/swap/agent-execute", async (req: Request, res: Response) => {
     res.status(503).json({ ok: false, error: "Agent wallet not configured (PRIVATE_KEY missing)" });
     return;
   }
+
+  // Cap agent-execute to 1 unit max to protect the agent wallet
+  const numericAmount = parseFloat(readableAmount || "0");
+  if (numericAmount > 1) {
+    res.status(400).json({ ok: false, error: "Agent swap capped at 1 unit max" });
+    return;
+  }
+
+  // Rate limiting
+  const ip = (req.headers["x-forwarded-for"] as string || req.socket.remoteAddress || "unknown").split(",")[0].trim();
+  const now = Date.now();
+  if (now > dailySwapReset) { dailySwapCount = 0; dailySwapReset = now + 86400_000; }
+  if (dailySwapCount >= DAILY_SWAP_LIMIT) {
+    res.status(429).json({ ok: false, error: "Daily agent swap limit reached. Try again tomorrow." });
+    return;
+  }
+  const lastSwap = ipLastSwap.get(ip) || 0;
+  if (now - lastSwap < IP_COOLDOWN_MS) {
+    const waitMin = Math.ceil((IP_COOLDOWN_MS - (now - lastSwap)) / 60000);
+    res.status(429).json({ ok: false, error: `Please wait ${waitMin} min before another agent swap.` });
+    return;
+  }
+  ipLastSwap.set(ip, now);
+  dailySwapCount++;
 
   try {
     console.log("[agent-execute] START");

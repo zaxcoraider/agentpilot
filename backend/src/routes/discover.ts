@@ -57,12 +57,26 @@ router.get("/market/kline/:address", async (req: Request, res: Response) => {
 });
 
 // PAID ($0.001 USDT) — GET /api/signal/smart-money?chain=xlayer
+// Direct gated endpoint (used by agentFetch proxy below)
 router.get("/signal/smart-money", x402(), async (req: Request, res: Response) => {
   const { chain = "ethereum" } = req.query as Record<string, string>;
-  // wallet-type 1 = Smart Money
   const data = await run(["signal", "list", "--chain", chain, "--wallet-type", "1"]);
   logAction("scan", `signal:${chain}`);
   res.json(data);
+});
+
+// GET /api/signal/smart-money-agent?chain=ethereum
+// Signals only available on ethereum/solana/bsc — falls back to ethereum for other chains
+router.get("/signal/smart-money-agent", async (req: Request, res: Response) => {
+  const requestedChain = (req.query.chain as string) || "ethereum";
+  const chain = ["ethereum", "solana", "bsc"].includes(requestedChain) ? requestedChain : "ethereum";
+  try {
+    const data = await run(["signal", "list", "--chain", chain, "--wallet-type", "1"]);
+    logAction("scan", `signal-agent:${chain}`);
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ ok: false, error: (err as Error).message });
+  }
 });
 
 export default router;

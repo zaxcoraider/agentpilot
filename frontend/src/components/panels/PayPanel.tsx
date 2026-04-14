@@ -32,11 +32,17 @@ export function PayPanel() {
 
   const sendPayment = async () => {
     if (!to || !amount) return;
-    const r = await post<{ data: { txHash?: string } }>("/pay/x402", { to, amount, memo });
+    const adminKey = import.meta.env.VITE_ADMIN_KEY;
+    const r = await post<{ ok: boolean; data?: { txHash?: string }; error?: string }>("/pay/x402", { to, amount, memo, adminKey });
     if (r?.data?.txHash) {
       setTxHash(r.data.txHash);
       setHistory((prev) => [
         { endpoint: `Transfer → ${to.slice(0, 8)}...`, amount: `${amount} OKB`, time: Date.now(), status: "success" },
+        ...prev.slice(0, 9),
+      ]);
+    } else {
+      setHistory((prev) => [
+        { endpoint: `Transfer → ${to.slice(0, 8)}...`, amount: `${amount} OKB`, time: Date.now(), status: "failed" },
         ...prev.slice(0, 9),
       ]);
     }
@@ -67,8 +73,8 @@ export function PayPanel() {
               <p className="text-sm font-mono font-bold text-terminal-text">{stats?.totalCalls ?? "—"}</p>
             </div>
             <div>
-              <p className="text-xs text-terminal-muted font-mono">Network</p>
-              <p className="text-sm font-mono font-bold text-terminal-green">X Layer</p>
+              <p className="text-xs text-terminal-muted font-mono">Success rate</p>
+              <p className="text-sm font-mono font-bold text-terminal-green">{stats?.successRate ?? "—"}</p>
             </div>
           </div>
           <p className="text-xs font-mono text-terminal-muted mt-1 opacity-70">
@@ -84,6 +90,7 @@ export function PayPanel() {
             { name: "Token Risk Scan",     price: "$0.001" },
             { name: "DeFi Products",       price: "$0.001" },
             { name: "DeFi Invest",         price: "$0.001" },
+            { name: "Agent Auto Swap",     price: "$0.001" },
           ].map((e, i) => (
             <div key={i} className="data-row">
               <span className="data-label">{e.name}</span>
@@ -104,7 +111,13 @@ export function PayPanel() {
             {loading ? "SENDING..." : "SEND PAYMENT"}
           </button>
           {txHash && (
-            <p className="text-xs font-mono text-terminal-green break-all">TX: {txHash}</p>
+            <a
+              href={`https://www.oklink.com/xlayer/tx/${txHash}`}
+              target="_blank" rel="noopener noreferrer"
+              className="text-xs font-mono text-terminal-green hover:underline break-all block"
+            >
+              TX: {txHash}
+            </a>
           )}
         </div>
 

@@ -5,10 +5,15 @@ import { logAction } from "../services/registry";
 const router = Router();
 
 // POST /api/pay/x402
-// Body: { to, amount, token?, memo? }
-// Executes a native OKB transfer on X Layer (x402-style payment)
+// Body: { to, amount, token?, memo?, adminKey }
+// Executes a native OKB transfer on X Layer (x402-style payment) — admin only
 router.post("/pay/x402", async (req: Request, res: Response) => {
-  const { to, amount, memo = "" } = req.body;
+  const { to, amount, memo = "", adminKey } = req.body;
+
+  if (!process.env.ADMIN_KEY || adminKey !== process.env.ADMIN_KEY) {
+    res.status(403).json({ ok: false, error: "Unauthorized" });
+    return;
+  }
 
   if (!to || !amount) {
     res.status(400).json({ ok: false, error: "to and amount are required" });

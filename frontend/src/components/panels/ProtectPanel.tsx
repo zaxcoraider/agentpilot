@@ -83,11 +83,29 @@ export function ProtectPanel() {
       return;
     }
     setError("");
-    const r = await get<{ data: Approval[] }>(
+    const r = await get<{ data: Approval[] | Record<string, unknown>[] }>(
       `/security/approval/${wallet}?chain=xlayer&token=${token}`
     );
+    const MAX_UINT = "115792089237316195423570985008687907853269984665640564039457584007913129639935";
     if (r?.data && Array.isArray(r.data)) {
-      setApprovals(r.data);
+      const normalized: Approval[] = (r.data as Record<string, unknown>[]).flatMap((a) => {
+        const spender = (a.spender || a.dexContractAddress || "") as string;
+        const nestedTokens = a.tokens as Record<string, unknown>[] | undefined;
+        if (nestedTokens && nestedTokens.length > 0) {
+          return nestedTokens.map((t) => {
+            const raw = (t.spendable || t.allowance || t.approveAmount || "") as string;
+            return {
+              spender,
+              token: (t.tokenContractAddress || t.token || token) as string,
+              tokenSymbol: (t.tokenSymbol || t.symbol || "") as string,
+              allowance: raw === MAX_UINT ? "unlimited" : (raw || "0"),
+            };
+          });
+        }
+        const raw = (a.allowance || a.approveAmount || "") as string;
+        return [{ spender, token: (a.tokenContractAddress || a.token || token) as string, tokenSymbol: (a.tokenSymbol || "") as string, allowance: raw === MAX_UINT ? "unlimited" : raw }];
+      });
+      setApprovals(normalized);
     } else {
       setApprovals([]);
       setError("No approval data returned.");
@@ -241,7 +259,7 @@ export function ProtectPanel() {
               <div key={i} className="border border-terminal-border rounded p-2 space-y-1 bg-terminal-bg">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-mono text-terminal-cyan">
-                    {a.tokenSymbol || a.token || "Unknown Token"}
+                    {a.tokenSymbol || (a.token ? `${a.token.slice(0, 10)}...` : "Unknown Token")}
                   </span>
                 </div>
                 <p className="text-xs font-mono text-terminal-muted">
