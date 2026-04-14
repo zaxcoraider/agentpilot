@@ -29,13 +29,17 @@ function authHeaders(method: string, path: string, body = ""): Record<string, st
     .createHmac("sha256", process.env.OKX_SECRET_KEY || "")
     .update(msg)
     .digest("base64");
-  return {
+  const headers: Record<string, string> = {
     "Content-Type": "application/json",
     "OK-ACCESS-KEY": process.env.OKX_API_KEY || "",
     "OK-ACCESS-SIGN": sign,
     "OK-ACCESS-TIMESTAMP": ts,
     "OK-ACCESS-PASSPHRASE": process.env.OKX_PASSPHRASE || "",
   };
+  if (process.env.OKX_PROJECT_ID) {
+    headers["OK-ACCESS-PROJECT"] = process.env.OKX_PROJECT_ID;
+  }
+  return headers;
 }
 
 async function get(path: string): Promise<unknown> {
