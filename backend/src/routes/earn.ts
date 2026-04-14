@@ -5,11 +5,15 @@ import { x402 } from "../middleware/x402";
 
 const router = Router();
 
-// PAID ($0.001 USDT) — GET /api/defi/products
-router.get("/defi/products", x402(), async (req: Request, res: Response) => {
-  const data = await run(["defi", "list"]);
-  logAction("scan", "defi-products");
-  res.json(data);
+// FREE — GET /api/defi/products (browsing is free; investing is gated)
+router.get("/defi/products", async (_req: Request, res: Response) => {
+  try {
+    const data = await run(["defi", "list"]);
+    logAction("scan", "defi-products");
+    res.json(data);
+  } catch (err: unknown) {
+    res.status(500).json({ ok: false, error: (err as Error).message });
+  }
 });
 
 // PAID ($0.001 USDT) — POST /api/defi/invest
