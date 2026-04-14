@@ -1,5 +1,6 @@
 import { config } from "dotenv";
 import { resolve } from "path";
+import { existsSync } from "fs";
 config({ path: resolve(__dirname, "../../.env") });
 import express from "express";
 import cors from "cors";
@@ -20,13 +21,12 @@ import { startAutonomousAgent } from "./services/autonomousAgent";
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "http://localhost:5173").split(",").map(s => s.trim());
+// CORS: open to all origins (hackathon demo) or restrict via ALLOWED_ORIGINS env var
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(",").map(s => s.trim()) : null;
 app.use(cors({
-  origin: (origin, cb) => {
-    // Allow requests with no origin (curl/Postman in dev) only in development
-    if (!origin) return cb(null, process.env.NODE_ENV !== "production");
-    cb(null, ALLOWED_ORIGINS.includes(origin));
-  },
+  origin: ALLOWED_ORIGINS
+    ? (origin, cb) => { cb(null, !origin || ALLOWED_ORIGINS.includes(origin)); }
+    : true, // allow all origins when ALLOWED_ORIGINS not set
   credentials: true,
 }));
 app.use(express.json());
@@ -51,6 +51,17 @@ app.use("/api", payRoutes);
 app.use("/api", dcaRoutes);
 app.use("/api", agentRoutes);
 app.use("/api", analyticsRoutes);
+
+// Serve frontend static files (built frontend/dist copied to backend/public)
+const frontendDist = resolve(__dirname, "../public");
+if (existsSync(frontendDist)) {
+  app.use(express.static(frontendDist));
+  // SPA fallback — all non-API routes serve index.html
+  app.get(/^(?!\/api|\/health).*/, (_req, res) => {
+    res.sendFile(resolve(frontendDist, "index.html"));
+  });
+  console.log("[server] Serving frontend from", frontendDist);
+}
 
 // Global error handler
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

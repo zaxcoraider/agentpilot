@@ -16,7 +16,7 @@ import { promisify } from "util";
 import { logAction } from "./registry";
 
 const execFileAsync = promisify(execFile);
-const API_BASE = process.env.BACKEND_URL || "http://localhost:3001";
+const API_BASE = process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 3001}`;
 
 // Credit tracking
 let totalSpent = 0;
