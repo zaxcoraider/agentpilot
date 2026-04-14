@@ -1,0 +1,12 @@
+[phases.setup]
+nixPkgs = []
+aptPkgs = ["libatomic1"]
+
+[phases.install]
+cmds = ["npm install"]
+
+[phases.build]
+cmds = ["npm run build"]
+
+[start]
+cmd = "node dist/index.js"
