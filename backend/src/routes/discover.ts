@@ -25,17 +25,19 @@ router.get("/token/search", async (req: Request, res: Response) => {
     } catch { /* try next */ }
   }
 
-  // Fallback: fuzzy match against known X Layer tokens
-  const enriched = await enrichTokenPrices(XLAYER_TOKENS);
-  const matched = enriched.filter((t) =>
-    t.tokenSymbol.toLowerCase().includes(q) ||
-    t.tokenName.toLowerCase().includes(q) ||
-    t.tokenContractAddress.toLowerCase() === q
-  );
-  if (matched.length > 0) {
-    logAction("search", query);
-    res.json({ ok: true, data: matched });
-    return;
+  // Fallback: fuzzy match against known X Layer tokens (only for xlayer searches)
+  if (chain === "xlayer") {
+    const enriched = await enrichTokenPrices(XLAYER_TOKENS);
+    const matched = enriched.filter((t) =>
+      t.tokenSymbol.toLowerCase().includes(q) ||
+      t.tokenName.toLowerCase().includes(q) ||
+      t.tokenContractAddress.toLowerCase() === q
+    );
+    if (matched.length > 0) {
+      logAction("search", query);
+      res.json({ ok: true, data: matched });
+      return;
+    }
   }
 
   res.json({ ok: true, data: [] });
