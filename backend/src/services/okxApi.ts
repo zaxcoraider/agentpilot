@@ -114,34 +114,34 @@ export async function runHttp(args: string[]): Promise<unknown> {
 
   // ── swap ───────────────────────────────────────────────────────────────────
   if (cmd === "swap") {
-    if (sub === "chains") return get(`/api/v5/dex/aggregator/supported/chain`);
-    if (sub === "liquidity") return get(`/api/v5/dex/aggregator/get-liquidity?chainId=${ci}`);
+    if (sub === "chains") return get(`/api/v6/dex/aggregator/supported/chain`);
+    if (sub === "liquidity") return get(`/api/v6/dex/aggregator/get-liquidity?chainId=${ci}`);
     if (sub === "quote") {
       const amount = flags["readable-amount"]
         ? String(Math.round(parseFloat(flags["readable-amount"]) * 1e18))
         : flags.amount || "0";
-      return get(`/api/v5/dex/aggregator/quote?chainId=${ci}&fromTokenAddress=${flags.from}&toTokenAddress=${flags.to}&amount=${amount}`);
+      return get(`/api/v6/dex/aggregator/quote?chainId=${ci}&fromTokenAddress=${flags.from}&toTokenAddress=${flags.to}&amount=${amount}`);
     }
     if (sub === "swap") {
       const amount = flags["readable-amount"]
         ? String(Math.round(parseFloat(flags["readable-amount"]) * 1e18))
         : flags.amount || "0";
       const slippage = flags.slippage || "0.05";
-      return get(`/api/v5/dex/aggregator/swap?chainId=${ci}&fromTokenAddress=${flags.from}&toTokenAddress=${flags.to}&amount=${amount}&userWalletAddress=${flags.wallet}&slippage=${slippage}`);
+      return get(`/api/v6/dex/aggregator/swap?chainId=${ci}&fromTokenAddress=${flags.from}&toTokenAddress=${flags.to}&amount=${amount}&userWalletAddress=${flags.wallet}&slippage=${slippage}`);
     }
     if (sub === "approve") {
       const amount = flags.amount || "115792089237316195423570985008687907853269984665640564039457584007913129639935";
-      return get(`/api/v5/dex/aggregator/approve-transaction?chainId=${ci}&tokenContractAddress=${flags.token}&approveAmount=${amount}`);
+      return get(`/api/v6/dex/aggregator/approve-transaction?chainId=${ci}&tokenContractAddress=${flags.token}&approveAmount=${amount}`);
     }
     if (sub === "check-approvals") {
-      return get(`/api/v5/dex/aggregator/token-approval-lock?chainId=${ci}&tokenContractAddress=${flags.token}&walletAddress=${flags.address}`);
+      return get(`/api/v6/dex/aggregator/token-approval-lock?chainId=${ci}&tokenContractAddress=${flags.token}&walletAddress=${flags.address}`);
     }
   }
 
   // ── gateway ────────────────────────────────────────────────────────────────
   if (cmd === "gateway") {
     if (sub === "gas") return get(`/api/v5/dex/market/gas-price?chainIndex=${ci}`);
-    if (sub === "chains") return get(`/api/v5/dex/aggregator/supported/chain`);
+    if (sub === "chains") return get(`/api/v6/dex/aggregator/supported/chain`);
     if (sub === "simulate") return get(`/api/v5/dex/pre-transaction/transaction-simulation`);
     if (sub === "broadcast") return post(`/api/v5/dex/pre-transaction/broadcast-transaction`, { chainIndex: ci, signedTx: flags["signed-tx"] || "" });
   }
