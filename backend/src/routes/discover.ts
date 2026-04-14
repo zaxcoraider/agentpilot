@@ -9,10 +9,11 @@ const router = Router();
 // FREE — GET /api/token/search?query=OKB&chain=xlayer
 router.get("/token/search", async (req: Request, res: Response) => {
   const { query = "", chain = "xlayer" } = req.query as Record<string, string>;
-  if (!query.trim()) { res.json({ ok: true, data: [] }); return; }
+  const q = query.trim().toLowerCase();
+  if (!q) { res.json({ ok: true, data: [] }); return; }
 
   // Try chain-specific search first, then fall back to global search (no chainIndex)
-  const chains = chain === "xlayer" ? [chain, "ethereum"] : [chain];
+  const chains = chain === "xlayer" ? ["ethereum"] : [chain, "ethereum"];
   for (const c of chains) {
     try {
       const data = await run(["token", "search", "--query", query, "--chain", c]) as { ok?: boolean; data?: unknown[] };
@@ -23,14 +24,21 @@ router.get("/token/search", async (req: Request, res: Response) => {
       }
     } catch { /* try next */ }
   }
-  // Global search without chain filter
-  try {
-    const data = await run(["token", "search", "--query", query, "--chain", "ethereum"]);
+
+  // Fallback: fuzzy match against known X Layer tokens
+  const enriched = await enrichTokenPrices(XLAYER_TOKENS);
+  const matched = enriched.filter((t) =>
+    t.tokenSymbol.toLowerCase().includes(q) ||
+    t.tokenName.toLowerCase().includes(q) ||
+    t.tokenContractAddress.toLowerCase() === q
+  );
+  if (matched.length > 0) {
     logAction("search", query);
-    res.json(data);
-  } catch {
-    res.json({ ok: true, data: [] });
+    res.json({ ok: true, data: matched });
+    return;
   }
+
+  res.json({ ok: true, data: [] });
 });
 
 // Known X Layer tokens — used as fallback when market data API is unavailable
