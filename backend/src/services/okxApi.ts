@@ -83,7 +83,9 @@ export async function runHttp(args: string[]): Promise<unknown> {
     }
     if (sub === "hot-tokens") {
       const tf = flags["time-frame"] || "4";
-      return get(`/api/v5/dex/market/hot-token?rankingType=4&rankingTimeFrame=${tf}&chainIndex=${ci}`);
+      // X Layer not supported in hot-token API — omit chainIndex to get global trending
+      const chainParam = ci !== "196" ? `&chainIndex=${ci}` : "";
+      return get(`/api/v5/dex/market/hot-token?rankingType=4&rankingTimeFrame=${tf}${chainParam}`);
     }
     if (sub === "advanced-info") {
       return get(`/api/v5/dex/market/token-security?tokenContractAddress=${flags.address}&chainIndex=${ci}`);
@@ -95,7 +97,8 @@ export async function runHttp(args: string[]): Promise<unknown> {
       return get(`/api/v5/dex/market/token-holder?tokenContractAddress=${flags.address}&chainIndex=${ci}`);
     }
     if (sub === "trending") {
-      return get(`/api/v5/dex/market/hot-token?rankingType=4&rankingTimeFrame=4&chainIndex=${ci}`);
+      const chainParam = ci !== "196" ? `&chainIndex=${ci}` : "";
+      return get(`/api/v5/dex/market/hot-token?rankingType=4&rankingTimeFrame=4${chainParam}`);
     }
   }
 
@@ -163,7 +166,7 @@ export async function runHttp(args: string[]): Promise<unknown> {
 
   // ── defi ───────────────────────────────────────────────────────────────────
   if (cmd === "defi") {
-    if (sub === "list") return get(`/api/v5/dex/defi/product/list?chainIndex=${ci}`);
+    if (sub === "list") return get(`/api/v5/dex/defi/product/list`);
     if (sub === "invest") {
       return get(`/api/v5/dex/defi/invest/transaction?investmentId=${flags["investment-id"]}&investAddress=${flags.address}&tokenAddress=${flags.token}&investAmount=${flags.amount}&chainIndex=${ci}`);
     }
