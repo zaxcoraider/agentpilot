@@ -48,7 +48,7 @@ export function recordAction(
       cost: opts.cost ?? 0,
       onChain: shouldLogOnChain,
     },
-  }).catch((err) => {
+  }).catch((err: unknown) => {
     console.warn(`[db] action record failed: ${(err as Error).message}`);
   });
 
