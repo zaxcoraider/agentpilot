@@ -55,7 +55,6 @@ export function DiscoverPanel() {
   const [signalChain, setSignalChain] = useState("ethereum");
 
   const SIGNAL_CHAINS = [
-    { id: "xlayer",   label: "X Layer" },
     { id: "ethereum", label: "ETH" },
     { id: "solana",   label: "SOL" },
     { id: "bsc",      label: "BNB" },
@@ -77,6 +76,7 @@ export function DiscoverPanel() {
 
   useEffect(() => {
     loadTrending();
+    loadSignals("ethereum");
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -225,10 +225,10 @@ export function DiscoverPanel() {
           </div>
 
           {signalStatus === "idle" && (
-            <p className="text-xs text-terminal-muted font-mono">Select a chain to load whale activity</p>
+            <p className="text-xs text-terminal-muted font-mono">Loading...</p>
           )}
           {signalStatus === "error" && (
-            <p className="text-xs text-terminal-muted font-mono">Smart money signals available via onchainos CLI — try ETH or SOL</p>
+            <p className="text-xs text-terminal-muted font-mono">No signals found for this chain</p>
           )}
           {signalStatus === "done" && signals.length === 0 && (
             <p className="text-xs text-terminal-muted font-mono">No signals found</p>
