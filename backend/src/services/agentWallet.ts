@@ -6,11 +6,12 @@
 
 import { execFile } from "child_process";
 import { promisify } from "util";
+import { ethers } from "ethers";
 import { logAction } from "./registry";
 
 const execFileAsync = promisify(execFile);
 
-export const AGENTIC_WALLET = "0xae5816be55e5c36fcb7f7ba61dcfefac70715c0c";
+export const AGENTIC_WALLET = process.env.AGENTIC_WALLET || "0xae5816be55e5c36fcb7f7ba61dcfefac70715c0c";
 
 interface SwapTx {
   to: string;
@@ -59,20 +60,40 @@ export async function executeViaAgentWallet(
   tx: SwapTx,
   chain = "xlayer"
 ): Promise<string> {
-  const args = [
-    "wallet", "contract-call",
-    "--to", tx.to,
-    "--chain", chain,
-    "--amt", tx.value || "0",
-    "--input-data", tx.data,
-    "--gas-limit", tx.gas,
-    "--force",
-  ];
+  // Try onchainos TEE wallet first (Windows/local)
+  try {
+    const args = [
+      "wallet", "contract-call",
+      "--to", tx.to,
+      "--chain", chain,
+      "--amt", tx.value || "0",
+      "--input-data", tx.data,
+      "--gas-limit", tx.gas,
+      "--force",
+    ];
+    const result = await runCli(args) as { ok: boolean; data?: { txHash?: string; hash?: string }; error?: string };
+    if (result.ok) return result.data?.txHash || result.data?.hash || "pending";
+  } catch {
+    // CLI unavailable (Railway/Linux) — fall through to ethers fallback
+  }
 
-  const result = await runCli(args) as { ok: boolean; data?: { txHash?: string; hash?: string }; error?: string };
-  if (!result.ok) throw new Error(result.error || "Agent wallet execution failed");
+  // Fallback: execute via EVM_PRIVATE_KEY (Railway deployment)
+  const privateKey = process.env.EVM_PRIVATE_KEY;
+  if (!privateKey) throw new Error("Agentic wallet CLI unavailable and EVM_PRIVATE_KEY not set");
 
-  return result.data?.txHash || result.data?.hash || "pending";
+  const rpc = process.env.XLAYER_RPC || "https://rpc.xlayer.tech";
+  const provider = new ethers.JsonRpcProvider(rpc);
+  const wallet = new ethers.Wallet(privateKey, provider);
+
+  const txResponse = await wallet.sendTransaction({
+    to: tx.to,
+    data: tx.data,
+    value: tx.value ? BigInt(tx.value) : 0n,
+    gasLimit: tx.gas ? BigInt(tx.gas) : undefined,
+  });
+
+  const receipt = await txResponse.wait();
+  return receipt?.hash || txResponse.hash;
 }
 
 /** Full autonomous swap: quote → sign → broadcast via agentic wallet */
