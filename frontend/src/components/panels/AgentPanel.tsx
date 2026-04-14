@@ -12,6 +12,17 @@ const XLAYER_TOKENS = [
   { symbol: "WETH", address: "0x5a77f1443d16ee5761d310e38b62f77f726bC71c" },
 ];
 
+interface Decision {
+  action: string;
+  token?: string;
+  amount?: string;
+  reasoning: string;
+  confidence?: string;
+  executed?: boolean;
+  txHash?: string;
+  timestamp: number;
+}
+
 interface DcaPlan {
   id: string;
   fromSymbol: string;
@@ -21,460 +32,417 @@ interface DcaPlan {
   totalRuns: number;
   nextRun: number;
   active: boolean;
-  txHistory: Array<{ txHash: string; timestamp: number; amount: string }>;
+  wallet: "agent" | "pk";
+  txHistory: Array<{ txHash: string; timestamp: number }>;
 }
 
-interface AgentBalance {
+interface TokenAsset {
+  symbol: string;
+  balance: string;
+  tokenPrice: string;
+  usdValue: string;
+}
+
+interface WalletInfo {
   address: string;
   type: string;
-  balance?: { data?: { details?: Array<{ tokenAssets?: Array<{ symbol: string; balance: string; tokenPrice: string; usdValue: string }> }> }; totalValueUsd?: string };
+  balance?: { data?: { details?: Array<{ tokenAssets?: TokenAsset[] }> } };
+}
+
+const ACTION_COLOR: Record<string, string> = {
+  BUY: "text-terminal-green", SELL: "text-terminal-red",
+  HOLD: "text-terminal-cyan", WAIT: "text-terminal-muted",
+  REBALANCE: "text-terminal-cyan", FOLLOW_TEE: "text-terminal-green",
+  DCA: "text-terminal-green",
+};
+
+const ACTION_BG: Record<string, string> = {
+  BUY: "bg-terminal-green text-terminal-bg",
+  SELL: "bg-terminal-red text-terminal-bg",
+  FOLLOW_TEE: "bg-terminal-green text-terminal-bg",
+  REBALANCE: "border border-terminal-cyan text-terminal-cyan",
+  HOLD: "border border-terminal-border text-terminal-muted",
+  WAIT: "border border-terminal-border text-terminal-muted",
+};
+
+function fmtInterval(ms: number) {
+  const s = ms / 1000;
+  if (s < 3600) return `${s / 60}m`;
+  if (s < 86400) return `${s / 3600}h`;
+  return `${s / 86400}d`;
+}
+
+function fmtNext(ts: number) {
+  const diff = ts - Date.now();
+  if (diff <= 0) return "due";
+  const s = Math.floor(diff / 1000);
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.floor(s / 60)}m`;
+  return `${Math.floor(s / 3600)}h`;
 }
 
 export function AgentPanel() {
   const { get, post, del, loading } = useApi();
   const { address: userAddress } = useWallet();
 
-  const [agentBalance, setAgentBalance] = useState<AgentBalance | null>(null);
-  const [dcaPlans, setDcaPlans] = useState<DcaPlan[]>([]);
-  const [tab, setTab] = useState<"wallet" | "dca" | "swap" | "ai">("wallet");
+  const [teeWallet, setTeeWallet] = useState<WalletInfo | null>(null);
+  const [pkWallet, setPkWallet] = useState<WalletInfo | null>(null);
+  const [teeDecision, setTeeDecision] = useState<Decision | null>(null);
+  const [pkDecision, setPkDecision] = useState<Decision | null>(null);
+  const [teePlans, setTeePlans] = useState<DcaPlan[]>([]);
+  const [pkPlans, setPkPlans] = useState<DcaPlan[]>([]);
+  const [tab, setTab] = useState<"overview" | "tee" | "pk">("overview");
 
-  // Swap form
-  const [swapFrom, setSwapFrom] = useState(XLAYER_TOKENS[0]);
-  const [swapTo, setSwapTo] = useState(XLAYER_TOKENS[1]);
-  const [swapAmount, setSwapAmount] = useState("");
-  const [swapResult, setSwapResult] = useState("");
-  const [swapError, setSwapError] = useState("");
+  // TEE Agent form
+  const [teeAutoEx, setTeeAutoEx] = useState(false);
+  const [teeRunning, setTeeRunning] = useState(false);
+  const [teeSwapFrom, setTeeSwapFrom] = useState(XLAYER_TOKENS[0]);
+  const [teeSwapTo, setTeeSwapTo] = useState(XLAYER_TOKENS[1]);
+  const [teeSwapAmt, setTeeSwapAmt] = useState("");
+  const [teeSwapTx, setTeeSwapTx] = useState("");
+  const [teeDcaFrom, setTeeDcaFrom] = useState(XLAYER_TOKENS[0]);
+  const [teeDcaTo, setTeeDcaTo] = useState(XLAYER_TOKENS[1]);
+  const [teeDcaAmt, setTeeDcaAmt] = useState("");
+  const [teeDcaInt, setTeeDcaInt] = useState("3600");
 
-  // DCA form
-  const [dcaFrom, setDcaFrom] = useState(XLAYER_TOKENS[0]);
-  const [dcaTo, setDcaTo] = useState(XLAYER_TOKENS[1]);
-  const [dcaAmount, setDcaAmount] = useState("");
-  const [dcaInterval, setDcaInterval] = useState("3600");
-  const [dcaError, setDcaError] = useState("");
+  // PK Agent form
+  const [pkAutoEx, setPkAutoEx] = useState(false);
+  const [pkRunning, setPkRunning] = useState(false);
+  const [pkDcaFrom, setPkDcaFrom] = useState(XLAYER_TOKENS[0]);
+  const [pkDcaTo, setPkDcaTo] = useState(XLAYER_TOKENS[1]);
+  const [pkDcaAmt, setPkDcaAmt] = useState("");
+  const [pkDcaInt, setPkDcaInt] = useState("3600");
 
-  // AI state
-  interface AiDecision {
-    action: "BUY" | "HOLD" | "SELL" | "WAIT";
-    token?: string;
-    tokenAddress?: string;
-    amount?: string;
-    reasoning: string;
-    confidence: "HIGH" | "MEDIUM" | "LOW";
-    executed?: boolean;
-    txHash?: string;
-    timestamp: number;
-    signals?: unknown[];
-  }
-  const [aiDecision, setAiDecision] = useState<AiDecision | null>(null);
-  const [aiRunning, setAiRunning] = useState(false);
-  const [autoExecute, setAutoExecute] = useState(false);
-
-  const loadWallet = useCallback(async () => {
-    const r = await get<{ data: AgentBalance }>("/agent/wallet");
-    if (r?.data) setAgentBalance(r.data);
-  }, [get]);
-
-  const loadPlans = useCallback(async () => {
-    const r = await get<{ data: DcaPlan[] }>("/agent/dca");
-    if (r?.data) setDcaPlans(r.data);
+  const loadAll = useCallback(async () => {
+    const [tw, pw, td, pd, tp, pp] = await Promise.all([
+      get<{ data: WalletInfo }>("/agent/wallet"),
+      get<{ data: WalletInfo }>("/agent/pk/wallet"),
+      get<{ data: Decision }>("/agent/ai"),
+      get<{ data: Decision }>("/agent/pk/ai"),
+      get<{ data: DcaPlan[] }>("/agent/dca"),
+      get<{ data: DcaPlan[] }>("/agent/pk/dca"),
+    ]);
+    if (tw?.data) setTeeWallet(tw.data);
+    if (pw?.data) setPkWallet(pw.data);
+    if (td?.data) setTeeDecision(td.data);
+    if (pd?.data) setPkDecision(pd.data);
+    if (tp?.data) setTeePlans(tp.data);
+    if (pp?.data) setPkPlans(pp.data);
   }, [get]);
 
   useEffect(() => {
-    loadWallet();
-    loadPlans();
-    const t = setInterval(() => { loadWallet(); loadPlans(); }, 15000);
+    loadAll();
+    const t = setInterval(loadAll, 15000);
     return () => clearInterval(t);
-  }, [loadWallet, loadPlans]);
+  }, [loadAll]);
 
-  const agentTokens = agentBalance?.balance?.data?.details?.[0]?.tokenAssets || [];
-  const totalUsd = agentTokens.reduce((s, t) => s + Number(t.usdValue || 0), 0);
+  const getTokens = (w: WalletInfo | null) =>
+    w?.balance?.data?.details?.[0]?.tokenAssets || [];
 
-  const executeSwap = async () => {
-    if (!swapAmount) return;
-    setSwapError(""); setSwapResult("");
-    const r = await post<{ data: { txHash: string } }>("/agent/swap", {
-      from: swapFrom.address,
-      to: swapTo.address,
-      amount: swapAmount,
-      chain: "xlayer",
-    });
-    if (r?.data?.txHash) {
-      setSwapResult(r.data.txHash);
-      setSwapAmount("");
-      loadWallet();
-    } else {
-      setSwapError("Swap failed — check agent wallet balance");
-    }
+  const totalUsd = (w: WalletInfo | null) =>
+    getTokens(w).reduce((s, t) => s + Number(t.usdValue || 0), 0);
+
+  const runTeeAi = async () => {
+    setTeeRunning(true);
+    const r = await post<{ data: Decision }>("/agent/ai", { autoExecute: teeAutoEx });
+    if (r?.data) { setTeeDecision(r.data); if (teeAutoEx) loadAll(); }
+    setTeeRunning(false);
   };
 
-  const createDca = async () => {
-    if (!dcaAmount || !dcaInterval) return;
-    setDcaError("");
-    const r = await post<{ data: DcaPlan }>("/agent/dca", {
-      from: dcaFrom.address,
-      to: dcaTo.address,
-      fromSymbol: dcaFrom.symbol,
-      toSymbol: dcaTo.symbol,
-      amount: dcaAmount,
-      intervalSeconds: Number(dcaInterval),
-      chain: "xlayer",
-    });
-    if (r?.data) {
-      setDcaAmount(""); setDcaInterval("3600");
-      loadPlans();
-    } else {
-      setDcaError("Failed to create DCA plan");
-    }
+  const runPkAi = async () => {
+    setPkRunning(true);
+    const r = await post<{ data: Decision }>("/agent/pk/ai", { autoExecute: pkAutoEx });
+    if (r?.data) { setPkDecision(r.data); if (pkAutoEx) loadAll(); }
+    setPkRunning(false);
   };
 
-  const runAi = async () => {
-    setAiRunning(true);
-    const r = await post<{ data: AiDecision }>("/agent/ai", { autoExecute });
-    if (r?.data) setAiDecision(r.data);
-    setAiRunning(false);
-    if (autoExecute) loadWallet();
+  const teeSwap = async () => {
+    const r = await post<{ data: { txHash: string } }>("/agent/swap", { from: teeSwapFrom.address, to: teeSwapTo.address, amount: teeSwapAmt, chain: "xlayer" });
+    if (r?.data?.txHash) { setTeeSwapTx(r.data.txHash); setTeeSwapAmt(""); loadAll(); }
   };
 
-  const cancelPlan = async (id: string) => {
-    await del(`/agent/dca/${id}`);
-    loadPlans();
+  const createTeeDca = async () => {
+    await post("/agent/dca", { from: teeDcaFrom.address, to: teeDcaTo.address, fromSymbol: teeDcaFrom.symbol, toSymbol: teeDcaTo.symbol, amount: teeDcaAmt, intervalSeconds: Number(teeDcaInt), chain: "xlayer" });
+    setTeeDcaAmt(""); loadAll();
   };
 
-  const fmtInterval = (ms: number) => {
-    const s = ms / 1000;
-    if (s < 3600) return `${s / 60}m`;
-    if (s < 86400) return `${s / 3600}h`;
-    return `${s / 86400}d`;
+  const createPkDca = async () => {
+    await post("/agent/pk/dca", { from: pkDcaFrom.address, to: pkDcaTo.address, fromSymbol: pkDcaFrom.symbol, toSymbol: pkDcaTo.symbol, amount: pkDcaAmt, intervalSeconds: Number(pkDcaInt), chain: "xlayer" });
+    setPkDcaAmt(""); loadAll();
   };
 
-  const fmtTime = (ts: number) => {
-    const diff = ts - Date.now();
-    if (diff <= 0) return "due now";
-    const s = Math.floor(diff / 1000);
-    if (s < 60) return `${s}s`;
-    if (s < 3600) return `${Math.floor(s / 60)}m`;
-    return `${Math.floor(s / 3600)}h`;
+  const cancelPlan = async (id: string, isPk: boolean) => {
+    await del(`${isPk ? "/agent/pk/dca" : "/agent/dca"}/${id}`);
+    loadAll();
   };
+
+  const allPlans = [...teePlans, ...pkPlans].sort((a, b) => (b.active ? 1 : 0) - (a.active ? 1 : 0));
 
   return (
     <div className="panel h-full flex flex-col">
       <div className="panel-header">
         <span className="panel-title">⬡ Agent</span>
-        <span className="badge-green">TEE WALLET</span>
+        <div className="flex gap-1">
+          <span className="badge-green">TEE</span>
+          <span className="text-xs font-mono text-terminal-muted">+</span>
+          <span className="text-xs font-mono px-1 py-0.5 rounded border border-terminal-cyan text-terminal-cyan">PK</span>
+        </div>
       </div>
 
-      {/* Dual wallet summary */}
-      <div className="px-2 pt-2 grid grid-cols-2 gap-1">
-        <div className="border border-terminal-border rounded p-1.5">
-          <p className="text-xs text-terminal-muted font-mono">USER WALLET</p>
-          <p className="text-xs font-mono text-terminal-cyan truncate">
-            {userAddress ? `${userAddress.slice(0, 6)}...${userAddress.slice(-4)}` : "Not connected"}
-          </p>
-          <p className="text-xs text-terminal-muted font-mono">MetaMask · Manual</p>
-        </div>
+      {/* Dual wallet strip */}
+      <div className="px-2 pt-1.5 grid grid-cols-2 gap-1">
         <div className="border border-terminal-green border-opacity-40 rounded p-1.5 bg-terminal-green bg-opacity-5">
-          <p className="text-xs text-terminal-green font-mono">AGENT WALLET</p>
-          <a
-            href={`${EXPLORER}/address/${AGENTIC_WALLET}`}
-            target="_blank" rel="noopener noreferrer"
-            className="text-xs font-mono text-terminal-cyan hover:underline"
-          >
-            {AGENTIC_WALLET.slice(0, 6)}...{AGENTIC_WALLET.slice(-4)}
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-terminal-green font-mono font-bold">TEE AGENT</span>
+            <span className="text-xs text-terminal-green font-mono">${totalUsd(teeWallet).toFixed(2)}</span>
+          </div>
+          <a href={`${EXPLORER}/address/${AGENTIC_WALLET}`} target="_blank" rel="noopener noreferrer"
+            className="text-xs font-mono text-terminal-cyan hover:underline">
+            {AGENTIC_WALLET.slice(0, 8)}...{AGENTIC_WALLET.slice(-4)}
           </a>
-          <p className="text-xs text-terminal-green font-mono">${totalUsd.toFixed(2)} · TEE Auto</p>
+          <p className="text-xs text-terminal-muted font-mono">OKX TEE · Signal AI</p>
+        </div>
+        <div className="border border-terminal-cyan border-opacity-40 rounded p-1.5">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-terminal-cyan font-mono font-bold">PK AGENT</span>
+            <span className="text-xs text-terminal-cyan font-mono">${totalUsd(pkWallet).toFixed(2)}</span>
+          </div>
+          <span className="text-xs font-mono text-terminal-muted">
+            {pkWallet?.address ? `${pkWallet.address.slice(0, 8)}...${pkWallet.address.slice(-4)}` : userAddress ? `${userAddress.slice(0, 8)}...${userAddress.slice(-4)}` : "No key set"}
+          </span>
+          <p className="text-xs text-terminal-muted font-mono">Private Key · Rebalance</p>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 px-2 pt-2">
-        {(["wallet", "ai", "swap", "dca"] as const).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`text-xs font-mono px-2 py-0.5 rounded ${tab === t ? "bg-terminal-green text-terminal-bg" : "text-terminal-muted hover:text-terminal-green"}`}
-          >
-            {t.toUpperCase()}
+      <div className="flex gap-1 px-2 pt-1.5">
+        {(["overview", "tee", "pk"] as const).map((t) => (
+          <button key={t} onClick={() => setTab(t)}
+            className={`text-xs font-mono px-2 py-0.5 rounded ${tab === t ? (t === "tee" ? "bg-terminal-green text-terminal-bg" : t === "pk" ? "bg-terminal-cyan text-terminal-bg" : "bg-terminal-border text-terminal-text") : "text-terminal-muted hover:text-terminal-text"}`}>
+            {t === "overview" ? "OVERVIEW" : t === "tee" ? "⬡ TEE" : "⬢ PK"}
           </button>
         ))}
       </div>
 
       <div className="flex-1 overflow-y-auto panel-body">
 
-        {/* WALLET TAB */}
-        {tab === "wallet" && (
+        {/* OVERVIEW TAB */}
+        {tab === "overview" && (
           <div className="space-y-2">
-            <p className="data-label">AGENT BALANCES · X LAYER</p>
-            {agentTokens.length === 0 && (
-              <p className="text-xs text-terminal-muted font-mono">
-                {loading ? "Loading..." : "No tokens — fund the agent wallet to begin"}
-              </p>
-            )}
-            {agentTokens.map((t, i) => (
-              <div key={i} className="data-row">
-                <span className="text-xs font-mono text-terminal-cyan">{t.symbol}</span>
-                <span className="text-xs font-mono text-terminal-text">{Number(t.balance).toFixed(6)}</span>
-                <span className="text-xs font-mono text-terminal-muted">${Number(t.tokenPrice).toFixed(2)}</span>
-                <span className="text-xs font-mono text-terminal-green">${Number(t.usdValue).toFixed(2)}</span>
-              </div>
-            ))}
-            <div className="border-t border-terminal-border pt-1 mt-1">
-              <div className="data-row">
-                <span className="data-label">TOTAL VALUE</span>
-                <span className="text-xs font-mono text-terminal-green font-bold">${totalUsd.toFixed(2)}</span>
-              </div>
-              <div className="data-row">
-                <span className="data-label">TYPE</span>
-                <span className="text-xs font-mono text-terminal-cyan">OKX TEE · Zero Gas X Layer</span>
-              </div>
-              <div className="data-row">
-                <span className="data-label">ADDRESS</span>
-                <a
-                  href={`${EXPLORER}/address/${AGENTIC_WALLET}`}
-                  target="_blank" rel="noopener noreferrer"
-                  className="text-xs font-mono text-terminal-cyan hover:underline"
-                >
-                  {AGENTIC_WALLET.slice(0, 10)}...{AGENTIC_WALLET.slice(-6)}
-                </a>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* AI TAB */}
-        {tab === "ai" && (
-          <div className="space-y-2">
-            <p className="data-label">AI TOOLKIT · SIGNAL ANALYSIS</p>
-            <p className="text-xs text-terminal-muted font-mono">Claude analyzes live whale signals → decides → executes via TEE wallet</p>
-
-            <div className="flex items-center gap-2">
-              <label className="flex items-center gap-1 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={autoExecute}
-                  onChange={(e) => setAutoExecute(e.target.checked)}
-                  className="accent-terminal-green"
-                />
-                <span className="text-xs font-mono text-terminal-muted">Auto-execute if BUY</span>
-              </label>
-            </div>
-
-            <button
-              className="btn-primary w-full"
-              onClick={runAi}
-              disabled={aiRunning || loading}
-            >
-              {aiRunning ? "ANALYZING SIGNALS..." : "⬡ RUN AI AGENT"}
-            </button>
-
-            {aiDecision && (
-              <div className="space-y-1.5 mt-1">
-                {/* Action badge */}
-                <div className="flex items-center gap-2">
-                  <span className={`text-sm font-mono font-bold px-2 py-0.5 rounded ${
-                    aiDecision.action === "BUY" ? "bg-terminal-green text-terminal-bg" :
-                    aiDecision.action === "SELL" ? "bg-terminal-red text-terminal-bg" :
-                    "bg-terminal-border text-terminal-muted"
-                  }`}>
-                    {aiDecision.action}
-                  </span>
-                  {aiDecision.token && (
-                    <span className="text-xs font-mono text-terminal-cyan">{aiDecision.token}</span>
-                  )}
-                  <span className={`text-xs font-mono ${
-                    aiDecision.confidence === "HIGH" ? "text-terminal-green" :
-                    aiDecision.confidence === "MEDIUM" ? "text-terminal-cyan" :
-                    "text-terminal-muted"
-                  }`}>
-                    {aiDecision.confidence} confidence
-                  </span>
+            {/* Latest decisions */}
+            <p className="data-label">LATEST DECISIONS</p>
+            {[
+              { label: "TEE", d: teeDecision, color: "terminal-green" },
+              { label: "PK",  d: pkDecision,  color: "terminal-cyan"  },
+            ].map(({ label, d, color }) => d ? (
+              <div key={label} className={`border border-${color} border-opacity-20 rounded p-1.5`}>
+                <div className="flex items-center gap-1.5 mb-0.5">
+                  <span className={`text-xs font-mono text-${color}`}>{label}</span>
+                  <span className={`text-xs font-mono font-bold px-1.5 rounded ${ACTION_BG[d.action] || "text-terminal-muted"}`}>{d.action}</span>
+                  {d.token && <span className="text-xs font-mono text-terminal-cyan">{d.token}</span>}
+                  {d.amount && <span className="text-xs font-mono text-terminal-muted">{d.amount}</span>}
                 </div>
-
-                {/* Reasoning */}
-                <div className="border border-terminal-border rounded p-2 bg-terminal-bg">
-                  <p className="text-xs font-mono text-terminal-muted leading-relaxed">{aiDecision.reasoning}</p>
-                </div>
-
-                {/* Trade details */}
-                {aiDecision.action === "BUY" && aiDecision.amount && (
-                  <div className="data-row">
-                    <span className="data-label">TRADE</span>
-                    <span className="text-xs font-mono text-terminal-cyan">{aiDecision.amount} OKB → {aiDecision.token}</span>
-                  </div>
-                )}
-
-                {/* Execution result */}
-                {aiDecision.executed && aiDecision.txHash && (
-                  <a
-                    href={`${EXPLORER}/tx/${aiDecision.txHash}`}
-                    target="_blank" rel="noopener noreferrer"
-                    className="text-xs font-mono text-terminal-green hover:underline break-all block"
-                  >
-                    ✓ EXECUTED: {aiDecision.txHash.slice(0, 24)}...
+                <p className="text-xs text-terminal-muted font-mono leading-relaxed line-clamp-2">{d.reasoning}</p>
+                {d.executed && d.txHash && (
+                  <a href={`${EXPLORER}/tx/${d.txHash}`} target="_blank" rel="noopener noreferrer"
+                    className="text-xs font-mono text-terminal-green hover:underline truncate block">
+                    ✓ {d.txHash.slice(0, 20)}...
                   </a>
                 )}
-                {aiDecision.action === "BUY" && !aiDecision.executed && (
-                  <p className="text-xs text-terminal-muted font-mono">Enable auto-execute to trade automatically</p>
-                )}
-
-                <p className="text-xs text-terminal-muted font-mono opacity-50">
-                  {new Date(aiDecision.timestamp).toLocaleTimeString()}
-                </p>
               </div>
-            )}
-          </div>
-        )}
-
-        {/* SWAP TAB — one-time agent swap */}
-        {tab === "swap" && (
-          <div className="space-y-2">
-            <p className="data-label">AGENT ONE-TIME SWAP</p>
-            <p className="text-xs text-terminal-muted font-mono">Agent wallet signs autonomously — no MetaMask needed</p>
-
-            <div className="space-y-1">
-              <div className="flex gap-1 items-center">
-                <span className="data-label w-10">FROM</span>
-                <select
-                  className="input-field flex-1 text-xs"
-                  value={swapFrom.address}
-                  onChange={(e) => setSwapFrom(XLAYER_TOKENS.find(t => t.address === e.target.value) || XLAYER_TOKENS[0])}
-                >
-                  {XLAYER_TOKENS.map(t => <option key={t.address} value={t.address}>{t.symbol}</option>)}
-                </select>
+            ) : (
+              <div key={label} className="border border-terminal-border rounded p-1.5">
+                <span className="text-xs text-terminal-muted font-mono">{label} agent — click Run in {label === "TEE" ? "⬡ TEE" : "⬢ PK"} tab</span>
               </div>
-              <div className="flex gap-1 items-center">
-                <span className="data-label w-10">TO</span>
-                <select
-                  className="input-field flex-1 text-xs"
-                  value={swapTo.address}
-                  onChange={(e) => setSwapTo(XLAYER_TOKENS.find(t => t.address === e.target.value) || XLAYER_TOKENS[1])}
-                >
-                  {XLAYER_TOKENS.map(t => <option key={t.address} value={t.address}>{t.symbol}</option>)}
-                </select>
-              </div>
-              <input
-                className="input-field w-full"
-                placeholder={`Amount (${swapFrom.symbol})`}
-                value={swapAmount}
-                onChange={(e) => setSwapAmount(e.target.value)}
-              />
-              <button
-                className="btn-primary w-full"
-                onClick={executeSwap}
-                disabled={loading || !swapAmount}
-              >
-                {loading ? "EXECUTING..." : "⬡ EXECUTE VIA AGENT"}
-              </button>
-            </div>
+            ))}
 
-            {swapError && <p className="text-xs text-terminal-red font-mono">{swapError}</p>}
-            {swapResult && (
-              <a
-                href={`${EXPLORER}/tx/${swapResult}`}
-                target="_blank" rel="noopener noreferrer"
-                className="text-xs font-mono text-terminal-green hover:underline break-all block"
-              >
-                ✓ TX: {swapResult.slice(0, 20)}...
-              </a>
-            )}
-          </div>
-        )}
-
-        {/* DCA TAB */}
-        {tab === "dca" && (
-          <div className="space-y-2">
-            <p className="data-label">AUTONOMOUS DCA · AGENT WALLET</p>
-
-            <div className="space-y-1">
-              <div className="flex gap-1">
-                <select
-                  className="input-field flex-1 text-xs"
-                  value={dcaFrom.address}
-                  onChange={(e) => setDcaFrom(XLAYER_TOKENS.find(t => t.address === e.target.value) || XLAYER_TOKENS[0])}
-                >
-                  {XLAYER_TOKENS.map(t => <option key={t.address} value={t.address}>{t.symbol}</option>)}
-                </select>
-                <span className="text-terminal-muted font-mono text-xs self-center">→</span>
-                <select
-                  className="input-field flex-1 text-xs"
-                  value={dcaTo.address}
-                  onChange={(e) => setDcaTo(XLAYER_TOKENS.find(t => t.address === e.target.value) || XLAYER_TOKENS[1])}
-                >
-                  {XLAYER_TOKENS.map(t => <option key={t.address} value={t.address}>{t.symbol}</option>)}
-                </select>
-              </div>
-              <div className="flex gap-1">
-                <input
-                  className="input-field flex-1"
-                  placeholder={`Amount per run (${dcaFrom.symbol})`}
-                  value={dcaAmount}
-                  onChange={(e) => setDcaAmount(e.target.value)}
-                />
-                <select
-                  className="input-field w-24 text-xs"
-                  value={dcaInterval}
-                  onChange={(e) => setDcaInterval(e.target.value)}
-                >
-                  <option value="60">1 min</option>
-                  <option value="300">5 min</option>
-                  <option value="3600">1 hour</option>
-                  <option value="86400">1 day</option>
-                  <option value="604800">1 week</option>
-                </select>
-              </div>
-              <button
-                className="btn-primary w-full"
-                onClick={createDca}
-                disabled={loading || !dcaAmount}
-              >
-                {loading ? "CREATING..." : "⬡ START AGENT DCA"}
-              </button>
-            </div>
-
-            {dcaError && <p className="text-xs text-terminal-red font-mono">{dcaError}</p>}
-
-            {/* Active plans */}
-            {dcaPlans.length > 0 && (
-              <div className="space-y-1 mt-1">
-                <p className="data-label">ACTIVE PLANS</p>
-                {dcaPlans.map((plan) => (
-                  <div key={plan.id} className={`border rounded p-1.5 ${plan.active ? "border-terminal-green border-opacity-30" : "border-terminal-border opacity-50"}`}>
+            {/* All DCA plans */}
+            {allPlans.length > 0 && (
+              <>
+                <p className="data-label mt-1">DCA PLANS</p>
+                {allPlans.map((plan) => (
+                  <div key={plan.id} className={`border rounded p-1.5 ${plan.active ? (plan.wallet === "agent" ? "border-terminal-green border-opacity-30" : "border-terminal-cyan border-opacity-30") : "border-terminal-border opacity-40"}`}>
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-mono text-terminal-cyan">
-                        {plan.amount} {plan.fromSymbol} → {plan.toSymbol}
-                      </span>
-                      <div className="flex gap-1 items-center">
-                        <span className="text-xs text-terminal-muted font-mono">every {fmtInterval(plan.intervalMs)}</span>
+                      <div className="flex items-center gap-1">
+                        <span className={`text-xs font-mono ${plan.wallet === "agent" ? "text-terminal-green" : "text-terminal-cyan"}`}>
+                          {plan.wallet === "agent" ? "⬡" : "⬢"}
+                        </span>
+                        <span className="text-xs font-mono text-terminal-text">{plan.amount} {plan.fromSymbol}→{plan.toSymbol}</span>
+                        <span className="text-xs text-terminal-muted font-mono">/{fmtInterval(plan.intervalMs)}</span>
+                      </div>
+                      <div className="flex gap-2 items-center">
+                        <span className="text-xs text-terminal-muted font-mono">{plan.totalRuns} runs</span>
+                        {plan.active && <span className="text-xs text-terminal-muted font-mono">next {fmtNext(plan.nextRun)}</span>}
                         {plan.active && (
-                          <button
-                            onClick={() => cancelPlan(plan.id)}
-                            className="text-xs text-terminal-red hover:underline font-mono"
-                          >
-                            STOP
-                          </button>
+                          <button onClick={() => cancelPlan(plan.id, plan.wallet === "pk")}
+                            className="text-xs text-terminal-red hover:underline font-mono">STOP</button>
                         )}
                       </div>
                     </div>
-                    <div className="flex gap-3 mt-0.5">
-                      <span className="text-xs text-terminal-muted font-mono">runs: {plan.totalRuns}</span>
-                      {plan.active && <span className="text-xs text-terminal-muted font-mono">next: {fmtTime(plan.nextRun)}</span>}
-                    </div>
-                    {plan.txHistory.slice(0, 2).map((tx, i) => (
-                      <a
-                        key={i}
-                        href={`${EXPLORER}/tx/${tx.txHash}`}
-                        target="_blank" rel="noopener noreferrer"
-                        className="text-xs font-mono text-terminal-green hover:underline block truncate"
-                      >
-                        ✓ {tx.txHash.slice(0, 18)}...
+                    {plan.txHistory.slice(0, 1).map((tx, i) => (
+                      <a key={i} href={`${EXPLORER}/tx/${tx.txHash}`} target="_blank" rel="noopener noreferrer"
+                        className="text-xs font-mono text-terminal-green hover:underline truncate block mt-0.5">
+                        ✓ {tx.txHash.slice(0, 22)}...
                       </a>
                     ))}
                   </div>
                 ))}
-              </div>
+              </>
             )}
           </div>
         )}
 
+        {/* TEE AGENT TAB */}
+        {tab === "tee" && (
+          <div className="space-y-2">
+            <p className="data-label">TEE AGENT · SIGNAL AI + DCA</p>
+
+            {/* Balances */}
+            {getTokens(teeWallet).map((t, i) => (
+              <div key={i} className="data-row">
+                <span className="text-xs font-mono text-terminal-cyan w-12">{t.symbol}</span>
+                <span className="text-xs font-mono text-terminal-text">{Number(t.balance).toFixed(5)}</span>
+                <span className="text-xs font-mono text-terminal-green">${Number(t.usdValue).toFixed(2)}</span>
+              </div>
+            ))}
+
+            {/* AI */}
+            <div className="border border-terminal-green border-opacity-20 rounded p-1.5 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="data-label">AI SIGNAL ANALYSIS</span>
+                <label className="flex items-center gap-1 cursor-pointer">
+                  <input type="checkbox" checked={teeAutoEx} onChange={e => setTeeAutoEx(e.target.checked)} className="accent-terminal-green" />
+                  <span className="text-xs font-mono text-terminal-muted">Auto-execute</span>
+                </label>
+              </div>
+              <button className="btn-primary w-full" onClick={runTeeAi} disabled={teeRunning || loading}>
+                {teeRunning ? "ANALYZING..." : "⬡ RUN TEE AI AGENT"}
+              </button>
+              {teeDecision && (
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className={`text-xs font-mono font-bold px-1.5 rounded ${ACTION_BG[teeDecision.action] || ""}`}>{teeDecision.action}</span>
+                    {teeDecision.confidence && <span className={`text-xs font-mono ${ACTION_COLOR[teeDecision.action]}`}>{teeDecision.confidence}</span>}
+                  </div>
+                  <p className="text-xs text-terminal-muted font-mono leading-relaxed">{teeDecision.reasoning}</p>
+                  {teeDecision.executed && teeDecision.txHash && (
+                    <a href={`${EXPLORER}/tx/${teeDecision.txHash}`} target="_blank" rel="noopener noreferrer"
+                      className="text-xs font-mono text-terminal-green hover:underline break-all block">✓ {teeDecision.txHash}</a>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Manual swap */}
+            <div className="space-y-1">
+              <p className="data-label">ONE-TIME SWAP</p>
+              <div className="flex gap-1">
+                <select className="input-field flex-1 text-xs" value={teeSwapFrom.address} onChange={e => setTeeSwapFrom(XLAYER_TOKENS.find(t => t.address === e.target.value) || XLAYER_TOKENS[0])}>
+                  {XLAYER_TOKENS.map(t => <option key={t.address} value={t.address}>{t.symbol}</option>)}
+                </select>
+                <span className="text-terminal-muted self-center font-mono text-xs">→</span>
+                <select className="input-field flex-1 text-xs" value={teeSwapTo.address} onChange={e => setTeeSwapTo(XLAYER_TOKENS.find(t => t.address === e.target.value) || XLAYER_TOKENS[1])}>
+                  {XLAYER_TOKENS.map(t => <option key={t.address} value={t.address}>{t.symbol}</option>)}
+                </select>
+              </div>
+              <div className="flex gap-1">
+                <input className="input-field flex-1" placeholder="Amount" value={teeSwapAmt} onChange={e => setTeeSwapAmt(e.target.value)} />
+                <button className="btn-primary" onClick={teeSwap} disabled={loading || !teeSwapAmt}>SWAP</button>
+              </div>
+              {teeSwapTx && <a href={`${EXPLORER}/tx/${teeSwapTx}`} target="_blank" rel="noopener noreferrer" className="text-xs font-mono text-terminal-green hover:underline block truncate">✓ {teeSwapTx.slice(0, 24)}...</a>}
+            </div>
+
+            {/* DCA */}
+            <div className="space-y-1">
+              <p className="data-label">AUTO DCA</p>
+              <div className="flex gap-1">
+                <select className="input-field flex-1 text-xs" value={teeDcaFrom.address} onChange={e => setTeeDcaFrom(XLAYER_TOKENS.find(t => t.address === e.target.value) || XLAYER_TOKENS[0])}>
+                  {XLAYER_TOKENS.map(t => <option key={t.address} value={t.address}>{t.symbol}</option>)}
+                </select>
+                <span className="text-terminal-muted self-center font-mono text-xs">→</span>
+                <select className="input-field flex-1 text-xs" value={teeDcaTo.address} onChange={e => setTeeDcaTo(XLAYER_TOKENS.find(t => t.address === e.target.value) || XLAYER_TOKENS[1])}>
+                  {XLAYER_TOKENS.map(t => <option key={t.address} value={t.address}>{t.symbol}</option>)}
+                </select>
+              </div>
+              <div className="flex gap-1">
+                <input className="input-field flex-1" placeholder="Amount per run" value={teeDcaAmt} onChange={e => setTeeDcaAmt(e.target.value)} />
+                <select className="input-field w-20 text-xs" value={teeDcaInt} onChange={e => setTeeDcaInt(e.target.value)}>
+                  <option value="60">1m</option><option value="300">5m</option>
+                  <option value="3600">1h</option><option value="86400">1d</option>
+                </select>
+                <button className="btn-primary" onClick={createTeeDca} disabled={loading || !teeDcaAmt}>+</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* PK AGENT TAB */}
+        {tab === "pk" && (
+          <div className="space-y-2">
+            <p className="data-label">PK AGENT · REBALANCE + FOLLOW</p>
+
+            {/* Balances */}
+            {getTokens(pkWallet).map((t, i) => (
+              <div key={i} className="data-row">
+                <span className="text-xs font-mono text-terminal-cyan w-12">{t.symbol}</span>
+                <span className="text-xs font-mono text-terminal-text">{Number(t.balance).toFixed(5)}</span>
+                <span className="text-xs font-mono text-terminal-cyan">${Number(t.usdValue).toFixed(2)}</span>
+              </div>
+            ))}
+            {!pkWallet?.address && <p className="text-xs text-terminal-muted font-mono">Set EVM_PRIVATE_KEY in Railway to enable PK agent</p>}
+
+            {/* AI */}
+            <div className="border border-terminal-cyan border-opacity-20 rounded p-1.5 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="data-label">REBALANCE ANALYSIS</span>
+                <label className="flex items-center gap-1 cursor-pointer">
+                  <input type="checkbox" checked={pkAutoEx} onChange={e => setPkAutoEx(e.target.checked)} className="accent-terminal-cyan" />
+                  <span className="text-xs font-mono text-terminal-muted">Auto-execute</span>
+                </label>
+              </div>
+              <button className="w-full text-xs font-mono py-1.5 rounded border border-terminal-cyan text-terminal-cyan hover:bg-terminal-cyan hover:text-terminal-bg transition-colors disabled:opacity-50"
+                onClick={runPkAi} disabled={pkRunning || loading}>
+                {pkRunning ? "ANALYZING..." : "⬢ RUN PK AGENT"}
+              </button>
+              {pkDecision && (
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className={`text-xs font-mono font-bold px-1.5 rounded ${ACTION_BG[pkDecision.action] || ""}`}>{pkDecision.action}</span>
+                    {pkDecision.amount && <span className="text-xs text-terminal-muted font-mono">{pkDecision.amount}</span>}
+                  </div>
+                  <p className="text-xs text-terminal-muted font-mono leading-relaxed">{pkDecision.reasoning}</p>
+                  {pkDecision.executed && pkDecision.txHash && (
+                    <a href={`${EXPLORER}/tx/${pkDecision.txHash}`} target="_blank" rel="noopener noreferrer"
+                      className="text-xs font-mono text-terminal-cyan hover:underline break-all block">✓ {pkDecision.txHash}</a>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* DCA */}
+            <div className="space-y-1">
+              <p className="data-label">AUTO DCA</p>
+              <div className="flex gap-1">
+                <select className="input-field flex-1 text-xs" value={pkDcaFrom.address} onChange={e => setPkDcaFrom(XLAYER_TOKENS.find(t => t.address === e.target.value) || XLAYER_TOKENS[0])}>
+                  {XLAYER_TOKENS.map(t => <option key={t.address} value={t.address}>{t.symbol}</option>)}
+                </select>
+                <span className="text-terminal-muted self-center font-mono text-xs">→</span>
+                <select className="input-field flex-1 text-xs" value={pkDcaTo.address} onChange={e => setPkDcaTo(XLAYER_TOKENS.find(t => t.address === e.target.value) || XLAYER_TOKENS[1])}>
+                  {XLAYER_TOKENS.map(t => <option key={t.address} value={t.address}>{t.symbol}</option>)}
+                </select>
+              </div>
+              <div className="flex gap-1">
+                <input className="input-field flex-1" placeholder="Amount per run" value={pkDcaAmt} onChange={e => setPkDcaAmt(e.target.value)} />
+                <select className="input-field w-20 text-xs" value={pkDcaInt} onChange={e => setPkDcaInt(e.target.value)}>
+                  <option value="60">1m</option><option value="300">5m</option>
+                  <option value="3600">1h</option><option value="86400">1d</option>
+                </select>
+                <button className="w-8 text-xs font-mono py-1 rounded border border-terminal-cyan text-terminal-cyan hover:bg-terminal-cyan hover:text-terminal-bg"
+                  onClick={createPkDca} disabled={loading || !pkDcaAmt}>+</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

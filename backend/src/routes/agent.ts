@@ -9,6 +9,11 @@ import {
   getDcaPlan,
 } from "../services/agentWallet";
 import { runAiDecision, getLastAiDecision } from "../services/aiAgent";
+import {
+  PK_WALLET,
+  runPkDecision, getLastPkDecision,
+  createPkDcaPlan, cancelPkDcaPlan, listPkDcaPlans, getPkDcaPlan,
+} from "../services/pkAgent";
 import { logAction } from "../services/registry";
 
 const router = Router();
@@ -121,6 +126,70 @@ router.delete("/agent/dca/:id", (req: Request, res: Response) => {
   if (!ok) { res.status(404).json({ ok: false, error: "Plan not found" }); return; }
   logAction("invest", `agent-dca:cancel:${req.params.id}`);
   res.json({ ok: true, data: { cancelled: true } });
+});
+
+// ─── PK Agent routes ──────────────────────────────────────────────────────────
+
+// GET /api/agent/pk/wallet
+router.get("/agent/pk/wallet", async (_req: Request, res: Response) => {
+  try {
+    const address = PK_WALLET || process.env.PK_WALLET_ADDRESS || "";
+    const balanceData = address
+      ? await run(["portfolio", "all-balances", "--address", address, "--chain", "xlayer"])
+      : null;
+    res.json({ ok: true, data: { address, type: "Private Key (EVM)", chain: "X Layer", balance: balanceData } });
+  } catch (err) {
+    res.json({ ok: true, data: { address: PK_WALLET, type: "Private Key (EVM)", chain: "X Layer", balance: null, error: (err as Error).message } });
+  }
+});
+
+// GET /api/agent/pk/ai — last PK decision
+router.get("/agent/pk/ai", (_req: Request, res: Response) => {
+  res.json({ ok: true, data: getLastPkDecision() });
+});
+
+// POST /api/agent/pk/ai — run PK agent decision
+router.post("/agent/pk/ai", async (req: Request, res: Response) => {
+  const { autoExecute = false } = req.body;
+  try {
+    const decision = await runPkDecision(Boolean(autoExecute));
+    res.json({ ok: true, data: decision });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: (err as Error).message });
+  }
+});
+
+// POST /api/agent/pk/dca
+router.post("/agent/pk/dca", (req: Request, res: Response) => {
+  const { from, to, fromSymbol = "OKB", toSymbol = "USDT", amount, intervalSeconds, chain = "xlayer" } = req.body;
+  if (!from || !to || !amount || !intervalSeconds) {
+    res.status(400).json({ ok: false, error: "from, to, amount, intervalSeconds required" });
+    return;
+  }
+  const intervalMs = Number(intervalSeconds) * 1000;
+  if (intervalMs < 60_000) { res.status(400).json({ ok: false, error: "Min 60 seconds" }); return; }
+  const plan = createPkDcaPlan(from, to, fromSymbol, toSymbol, String(amount), intervalMs, chain);
+  logAction("invest", `pk-dca:${fromSymbol}→${toSymbol}:${amount}`);
+  res.json({ ok: true, data: plan });
+});
+
+// GET /api/agent/pk/dca
+router.get("/agent/pk/dca", (_req: Request, res: Response) => {
+  res.json({ ok: true, data: listPkDcaPlans() });
+});
+
+// DELETE /api/agent/pk/dca/:id
+router.delete("/agent/pk/dca/:id", (req: Request, res: Response) => {
+  const ok = cancelPkDcaPlan(req.params.id);
+  if (!ok) { res.status(404).json({ ok: false, error: "Plan not found" }); return; }
+  res.json({ ok: true, data: { cancelled: true } });
+});
+
+// GET /api/agent/pk/dca/:id
+router.get("/agent/pk/dca/:id", (req: Request, res: Response) => {
+  const plan = getPkDcaPlan(req.params.id);
+  if (!plan) { res.status(404).json({ ok: false, error: "Plan not found" }); return; }
+  res.json({ ok: true, data: plan });
 });
 
 export default router;
