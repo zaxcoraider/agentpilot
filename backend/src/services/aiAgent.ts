@@ -1,15 +1,13 @@
 /**
  * AI Agent Brain
- * Claude analyzes live market signals and decides whether to execute trades
- * via the OKX TEE agentic wallet — fully autonomous
+ * Rule-based signal analysis engine — no external API key required
+ * Analyzes live whale signals and decides whether to execute trades
+ * via the OKX TEE agentic wallet autonomously
  */
 
-import Anthropic from "@anthropic-ai/sdk";
 import { run } from "./onchainos";
 import { agentSwap, AGENTIC_WALLET } from "./agentWallet";
 import { logAction } from "./registry";
-
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 export interface AiDecision {
   action: "BUY" | "HOLD" | "SELL" | "WAIT";
@@ -50,45 +48,34 @@ export async function runAiDecision(autoExecute = false): Promise<AiDecision> {
     const tokens = balanceData?.data?.details?.[0]?.tokenAssets || [];
     const balanceSummary = tokens.map(t => `${t.symbol}: ${t.balance} ($${Number(t.usdValue).toFixed(2)})`).join(", ") || "No balance";
 
-    // 3. Ask Claude to analyze and decide
-    const prompt = `You are an autonomous DeFi trading agent controlling an OKX TEE-secured agentic wallet on X Layer.
+    // 3. Rule-based AI engine — analyze signals
+    interface SignalItem {
+      amountUsd?: string | number;
+      soldRatioPercent?: string | number;
+      triggerWalletCount?: string | number;
+      token?: { symbol?: string; marketCapUsd?: string | number };
+    }
 
-AGENT WALLET BALANCE:
-${balanceSummary}
+    const typed = signals as SignalItem[];
 
-LIVE SMART MONEY SIGNALS (whale wallet activity on Ethereum):
-${JSON.stringify(signals, null, 2)}
+    // Score each signal: accumulation strength
+    const scored = typed.map((s) => {
+      const usd = Number(s.amountUsd || 0);
+      const sold = Number(s.soldRatioPercent || 0);
+      const wallets = Number(s.triggerWalletCount || 1);
+      const mcap = Number(s.token?.marketCapUsd || 0);
+      // Accumulation score: high USD + low sell ratio + multiple wallets
+      const score = (usd / 1000) * (1 - sold / 100) * Math.sqrt(wallets);
+      return { ...s, score, usd, sold, wallets, mcap };
+    }).sort((a, b) => b.score - a.score);
 
-TASK: Analyze these signals and decide whether to execute a trade on X Layer using OKB (native token).
+    const top = scored[0];
+    const avgScore = scored.slice(0, 3).reduce((s, x) => s + x.score, 0) / 3;
 
-Rules:
-- Only BUY if multiple whale wallets are accumulating (low soldRatioPercent < 30%) and amountUsd > $1000
-- Only trade tokens available on X Layer: OKB (native), USDT (0x1E4a5963aBFD975d8c9021ce480b42188849D41d), USDC (0x74b7f16337b8972027f6196a17a631ac6de26d22)
-- Never risk more than 20% of balance in one trade
-- If no strong signal, output WAIT
-- Amount must be in human-readable format (e.g. "0.001" for OKB)
+    // Agent wallet OKB balance
+    const okbBalance = Number(tokens.find(t => t.symbol === "OKB")?.balance || 0);
+    const maxSpend = okbBalance * 0.15; // max 15% per trade
 
-Respond with ONLY valid JSON, no markdown:
-{
-  "action": "BUY" | "HOLD" | "SELL" | "WAIT",
-  "token": "token symbol if trading",
-  "tokenAddress": "contract address on X Layer if trading",
-  "fromToken": "OKB" or "USDT",
-  "fromTokenAddress": "source token address",
-  "amount": "human-readable amount",
-  "confidence": "HIGH" | "MEDIUM" | "LOW",
-  "reasoning": "2-3 sentence explanation of why"
-}`;
-
-    const message = await anthropic.messages.create({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 512,
-      messages: [{ role: "user", content: prompt }],
-    });
-
-    const responseText = (message.content[0] as { text: string }).text.trim();
-
-    // Parse JSON response
     let parsed: {
       action: AiDecision["action"];
       token?: string;
@@ -98,13 +85,43 @@ Respond with ONLY valid JSON, no markdown:
       confidence: AiDecision["confidence"];
       reasoning: string;
     };
-    try {
-      parsed = JSON.parse(responseText);
-    } catch {
+
+    // X Layer tradeable tokens
+    const XLAYER_TOKENS: Record<string, string> = {
+      USDT: "0x1E4a5963aBFD975d8c9021ce480b42188849D41d",
+      USDC: "0x74b7f16337b8972027f6196a17a631ac6de26d22",
+    };
+    const OKB_ADDRESS = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE";
+
+    if (avgScore > 5 && top.sold < 25 && top.usd > 5000 && maxSpend >= 0.001) {
+      // Strong accumulation signal → BUY USDT with OKB (safe stable swap)
+      const amount = Math.min(maxSpend, 0.005).toFixed(4);
+      parsed = {
+        action: "BUY",
+        token: "USDT",
+        tokenAddress: XLAYER_TOKENS["USDT"],
+        fromTokenAddress: OKB_ADDRESS,
+        amount,
+        confidence: avgScore > 15 ? "HIGH" : "MEDIUM",
+        reasoning: `${top.wallets} whale wallet(s) accumulated $${top.usd.toLocaleString(undefined, {maximumFractionDigits: 0})} in ${top.token?.symbol || "?"} with only ${top.sold}% sold. Accumulation score ${avgScore.toFixed(1)} exceeds threshold. Swapping ${amount} OKB → USDT on X Layer as a safe position.`,
+      };
+    } else if (avgScore > 2 && top.sold < 50) {
+      parsed = {
+        action: "HOLD",
+        confidence: "MEDIUM",
+        reasoning: `Moderate signal detected: $${top.usd.toLocaleString(undefined, {maximumFractionDigits: 0})} in ${top.token?.symbol || "?"} with ${top.sold}% sold. Score ${avgScore.toFixed(1)} below BUY threshold of 5. Monitoring for stronger confirmation before trading.`,
+      };
+    } else if (top.sold > 70) {
+      parsed = {
+        action: "WAIT",
+        confidence: "HIGH",
+        reasoning: `Whale wallets are distributing — ${top.sold}% of ${top.token?.symbol || "?"} position sold. High sell pressure detected. Staying out until accumulation resumes.`,
+      };
+    } else {
       parsed = {
         action: "WAIT",
         confidence: "LOW",
-        reasoning: "Could not parse AI response — defaulting to WAIT for safety.",
+        reasoning: `No strong accumulation signal. Top signal score: ${avgScore.toFixed(1)}. Whales hold ${(100 - top.sold).toFixed(0)}% of their ${top.token?.symbol || "?"} position but USD volume ($${top.usd.toLocaleString(undefined, {maximumFractionDigits: 0})}) is insufficient to trigger a trade.`,
       };
     }
 
