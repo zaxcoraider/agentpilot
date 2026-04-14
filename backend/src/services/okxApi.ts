@@ -83,32 +83,32 @@ export async function runHttp(args: string[]): Promise<unknown> {
   if (cmd === "token") {
     if (sub === "search") {
       const q = flags.query || flags.address || "";
-      return get(`/api/v6/dex/market/token-search?tokenNameOrAddress=${encodeURIComponent(q)}&chainIndex=${ci}`);
+      return get(`/api/v6/dex/market/token/search?tokenNameOrAddress=${encodeURIComponent(q)}&chainIndex=${ci}`);
     }
     if (sub === "hot-tokens") {
       const tf = flags["time-frame"] || "4";
       const chainParam = ci !== "196" ? `&chainIndex=${ci}` : "";
-      return get(`/api/v6/dex/market/hot-token?rankingType=4&rankingTimeFrame=${tf}${chainParam}`);
+      return get(`/api/v6/dex/market/token/hot-token?rankingType=4&rankingTimeFrame=${tf}${chainParam}`);
     }
     if (sub === "advanced-info") {
-      return get(`/api/v6/dex/market/token-security?tokenContractAddress=${flags.address}&chainIndex=${ci}`);
+      return get(`/api/v6/dex/market/token/advanced-info?tokenContractAddress=${flags.address}&chainIndex=${ci}`);
     }
     if (sub === "price-info") {
-      return get(`/api/v6/dex/market/current-price?tokenContractAddress=${flags.address}&chainIndex=${ci}`);
+      return get(`/api/v6/dex/market/price-info?tokenContractAddress=${flags.address}&chainIndex=${ci}`);
     }
     if (sub === "holders") {
-      return get(`/api/v6/dex/market/token-holder?tokenContractAddress=${flags.address}&chainIndex=${ci}`);
+      return get(`/api/v6/dex/market/token/holder?tokenContractAddress=${flags.address}&chainIndex=${ci}`);
     }
     if (sub === "trending") {
       const chainParam = ci !== "196" ? `&chainIndex=${ci}` : "";
-      return get(`/api/v6/dex/market/hot-token?rankingType=4&rankingTimeFrame=4${chainParam}`);
+      return get(`/api/v6/dex/market/token/hot-token?rankingType=4&rankingTimeFrame=4${chainParam}`);
     }
   }
 
   // ── signal ─────────────────────────────────────────────────────────────────
   if (cmd === "signal" && sub === "list") {
     const wt = flags["wallet-type"] || "1";
-    return get(`/api/v6/dex/market/signal?chainIndex=${ci}&walletType=${wt}&limit=20`);
+    return get(`/api/v6/dex/market/signal/list?chainIndex=${ci}&walletType=${wt}&limit=20`);
   }
 
   // ── swap ───────────────────────────────────────────────────────────────────
@@ -133,15 +133,15 @@ export async function runHttp(args: string[]): Promise<unknown> {
       return get(`/api/v6/dex/aggregator/approve-transaction?chainIndex=${ci}&tokenContractAddress=${flags.token}&approveAmount=${amount}`);
     }
     if (sub === "check-approvals") {
-      return get(`/api/v6/dex/aggregator/token-approval-lock?chainIndex=${ci}&tokenContractAddress=${flags.token}&walletAddress=${flags.address}`);
+      return get(`/api/v6/dex/pre-transaction/check-approvals?chainIndex=${ci}&tokenContractAddress=${flags.token}&walletAddress=${flags.address}`);
     }
   }
 
   // ── gateway ────────────────────────────────────────────────────────────────
   if (cmd === "gateway") {
-    if (sub === "gas") return get(`/api/v6/dex/market/gas-price?chainIndex=${ci}`);
+    if (sub === "gas") return get(`/api/v6/dex/pre-transaction/gas-price?chainIndex=${ci}`);
     if (sub === "chains") return get(`/api/v6/dex/aggregator/supported/chain`);
-    if (sub === "simulate") return get(`/api/v6/dex/pre-transaction/transaction-simulation`);
+    if (sub === "simulate") return post(`/api/v6/dex/pre-transaction/simulate`, { chainIndex: ci });
     if (sub === "broadcast") return post(`/api/v6/dex/pre-transaction/broadcast-transaction`, { chainIndex: ci, signedTx: flags["signed-tx"] || "" });
   }
 
@@ -163,7 +163,7 @@ export async function runHttp(args: string[]): Promise<unknown> {
       return get(`/api/v6/dex/market/candles?tokenContractAddress=${flags.address}&chainIndex=${ci}&bar=${bar}&limit=${limit}`);
     }
     if (sub === "price") {
-      return get(`/api/v6/dex/market/current-price?tokenContractAddress=${flags.address}&chainIndex=${ci}`);
+      return get(`/api/v6/dex/market/price?tokenContractAddress=${flags.address}&chainIndex=${ci}`);
     }
   }
 
@@ -178,7 +178,7 @@ export async function runHttp(args: string[]): Promise<unknown> {
 
   // ── leaderboard ────────────────────────────────────────────────────────────
   if (cmd === "leaderboard" && sub === "list") {
-    return get(`/api/v6/dex/market/leaderboard?chainIndex=${ci}&timeFrame=${flags["time-frame"] || "3"}&sortBy=${flags["sort-by"] || "1"}`);
+    return get(`/api/v6/dex/market/leaderboard/list?chainIndex=${ci}&timeFrame=${flags["time-frame"] || "3"}&sortBy=${flags["sort-by"] || "1"}`);
   }
 
   throw new Error(`Unsupported onchainos command: ${cmd} ${sub}`);

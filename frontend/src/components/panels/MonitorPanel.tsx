@@ -25,6 +25,23 @@ interface Action {
   timestamp?: number;
 }
 
+interface XLayerTx {
+  txId?: string;
+  blockHash?: string;
+  height?: string;
+  transactionTime?: string;
+  from?: string;
+  to?: string;
+  isFromContract?: boolean;
+  isToContract?: boolean;
+  amount?: string;
+  transactionSymbol?: string;
+  txFee?: string;
+  state?: string;
+  tokenContractAddress?: string;
+  methodId?: string;
+}
+
 interface KlinePoint {
   time: string;
   price: number;
@@ -41,6 +58,7 @@ export function MonitorPanel() {
   const [kline, setKline] = useState<KlinePoint[]>([]);
   const [totalValue, setTotalValue] = useState("—");
   const [tab, setTab] = useState<"balance" | "chart" | "actions">("balance");
+  const [txs, setTxs] = useState<XLayerTx[]>([]);
   const [agentDecision, setAgentDecision] = useState<{ action: string; symbol?: string; score?: number; reason: string; txHash?: string; timestamp: number } | null>(null);
   const [agentPaused, setAgentPaused] = useState(false);
 
@@ -78,13 +96,19 @@ export function MonitorPanel() {
   const [actionCount, setActionCount] = useState<number | null>(null);
 
   const loadActions = useCallback(async () => {
+    const wallet = connectedWallet || AGENTIC_WALLET;
+    // Fetch tx count from RPC
     try {
       const provider = new ethers.JsonRpcProvider("https://rpc.xlayer.tech");
-      // getTransactionCount = nonce = total txns sent by agent wallet
-      const count = await provider.getTransactionCount(ethers.getAddress(AGENTIC_WALLET));
+      const count = await provider.getTransactionCount(ethers.getAddress(wallet));
       setActionCount(count);
-    } catch (e) { console.warn("[actions] error:", e); }
-  }, []);
+    } catch (e) { console.warn("[actions] rpc error:", e); }
+    // Fetch real transaction history from OKLink X Layer API
+    try {
+      const r = await get<{ data: XLayerTx[] }>(`/txs/${wallet}?limit=20`);
+      if (r?.data && Array.isArray(r.data)) setTxs(r.data);
+    } catch (e) { console.warn("[txs] error:", e); }
+  }, [get, connectedWallet]);
 
   const loadDecision = useCallback(async () => {
     const r = await get<{ data: typeof agentDecision; paused: boolean }>("/agent/decision");
@@ -209,36 +233,51 @@ export function MonitorPanel() {
 
         {tab === "actions" && (
           <div className="space-y-1">
-            <p className="data-label mb-1">RECENT ACTIONS · ON-CHAIN</p>
-            {actionCount !== null && (
-              <div className="border border-terminal-green border-opacity-30 rounded p-2 bg-terminal-green bg-opacity-5 mb-2">
-                <p className="text-xs text-terminal-muted font-mono">TOTAL ON-CHAIN ACTIONS</p>
-                <p className="text-2xl font-mono font-bold text-terminal-green">{actionCount.toLocaleString()}</p>
-                <a
-                  href={`https://www.oklink.com/xlayer/address/${AGENTIC_WALLET}`}
-                  target="_blank" rel="noopener noreferrer"
-                  className="text-xs font-mono text-terminal-cyan hover:underline"
-                >
-                  View on OKLink →
-                </a>
-              </div>
-            )}
-            {actions.length === 0 && actionCount === null && (
-              <p className="text-xs text-terminal-muted font-mono">Loading...</p>
-            )}
-            {actions.map((a, i) => (
-              <div key={i} className="border border-terminal-border rounded p-2 bg-terminal-bg space-y-0.5">
-                <div className="flex items-center justify-between">
-                  <span className={`badge-${a.actionType === "swap" ? "cyan" : a.actionType === "invest" ? "green" : "cyan"}`}>
-                    {a.actionType?.toUpperCase()}
-                  </span>
-                  <span className="text-xs text-terminal-muted font-mono">
-                    {a.timestamp ? new Date(a.timestamp * 1000).toLocaleTimeString() : "—"}
-                  </span>
+            <div className="border border-terminal-green border-opacity-30 rounded p-2 bg-terminal-green bg-opacity-5 mb-2">
+              <p className="text-xs text-terminal-muted font-mono">TOTAL ON-CHAIN TXS · X LAYER</p>
+              <p className="text-2xl font-mono font-bold text-terminal-green">
+                {actionCount !== null ? actionCount.toLocaleString() : "—"}
+              </p>
+              <a
+                href={`https://www.oklink.com/xlayer/address/${connectedWallet || AGENTIC_WALLET}`}
+                target="_blank" rel="noopener noreferrer"
+                className="text-xs font-mono text-terminal-cyan hover:underline"
+              >
+                View on OKLink →
+              </a>
+            </div>
+            {txs.length === 0 && <p className="text-xs text-terminal-muted font-mono text-center py-2">Loading transactions...</p>}
+            {txs.map((tx, i) => {
+              const wallet = (connectedWallet || AGENTIC_WALLET).toLowerCase();
+              const isSend = tx.from?.toLowerCase() === wallet;
+              const ts = tx.transactionTime ? new Date(Number(tx.transactionTime)).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
+              const amount = tx.amount ? `${Number(tx.amount).toFixed(4)} ${tx.transactionSymbol || ""}` : "";
+              const shortHash = tx.txId ? `${tx.txId.slice(0, 10)}...${tx.txId.slice(-6)}` : "—";
+              return (
+                <div key={i} className="border border-terminal-border rounded p-2 bg-terminal-bg space-y-0.5">
+                  <div className="flex items-center justify-between">
+                    <span className={`text-xs font-mono font-bold ${isSend ? "text-terminal-red" : "text-terminal-green"}`}>
+                      {isSend ? "↑ SEND" : "↓ RECV"}
+                      {tx.isToContract ? " · CONTRACT" : ""}
+                    </span>
+                    <span className="text-xs text-terminal-muted font-mono">{ts}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-mono text-terminal-cyan">{amount}</span>
+                    <span className={`text-xs font-mono ${tx.state === "2" ? "text-terminal-green" : tx.state === "0" ? "text-terminal-yellow" : "text-terminal-red"}`}>
+                      {tx.state === "2" ? "✓" : tx.state === "0" ? "pending" : "fail"}
+                    </span>
+                  </div>
+                  <a
+                    href={`https://www.oklink.com/xlayer/tx/${tx.txId}`}
+                    target="_blank" rel="noopener noreferrer"
+                    className="text-xs font-mono text-terminal-muted hover:text-terminal-cyan truncate block"
+                  >
+                    {shortHash}
+                  </a>
                 </div>
-                <p className="text-xs font-mono text-terminal-muted truncate">{a.details}</p>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

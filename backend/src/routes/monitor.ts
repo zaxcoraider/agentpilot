@@ -3,6 +3,17 @@ import { run } from "../services/onchainos";
 import { logAction } from "../services/registry";
 import { getLastDecision, pauseAgent, resumeAgent, isAgentPaused } from "../services/autonomousAgent";
 
+const OKLINK_BASE = "https://www.oklink.com";
+
+async function oklinkGet(path: string): Promise<unknown> {
+  const res = await fetch(`${OKLINK_BASE}${path}`, {
+    headers: { "OK-ACCESS-KEY": process.env.OKX_API_KEY || "" },
+  });
+  const data = await res.json() as { code?: string; data?: unknown; msg?: string };
+  if (data.code && data.code !== "0") throw new Error(`OKLink error: ${data.msg || data.code}`);
+  return { ok: true, data: data.data };
+}
+
 const router = Router();
 
 // GET /api/wallet/balance/:address?chain=xlayer
@@ -45,6 +56,34 @@ router.get("/leaderboard", async (req: Request, res: Response) => {
     res.json(data);
   } catch {
     res.json({ ok: true, data: LEADERBOARD_FALLBACK, source: "fallback" });
+  }
+});
+
+// GET /api/txs/:address — X Layer transaction history (OKLink)
+router.get("/txs/:address", async (req: Request, res: Response) => {
+  try {
+    const { address } = req.params;
+    const { limit = "20", page = "1" } = req.query as Record<string, string>;
+    const data = await oklinkGet(
+      `/api/v5/xlayer/address/transaction-list?address=${address}&limit=${limit}&page=${page}`
+    );
+    res.json(data);
+  } catch (err: unknown) {
+    res.status(500).json({ ok: false, error: (err as Error).message });
+  }
+});
+
+// GET /api/token-txs/:address — X Layer token transfer history (OKLink)
+router.get("/token-txs/:address", async (req: Request, res: Response) => {
+  try {
+    const { address } = req.params;
+    const { limit = "20", page = "1" } = req.query as Record<string, string>;
+    const data = await oklinkGet(
+      `/api/v5/xlayer/address/token-transaction-list?address=${address}&limit=${limit}&page=${page}`
+    );
+    res.json(data);
+  } catch (err: unknown) {
+    res.status(500).json({ ok: false, error: (err as Error).message });
   }
 });
 
