@@ -79,11 +79,11 @@ export async function runHttp(args: string[]): Promise<unknown> {
   if (cmd === "token") {
     if (sub === "search") {
       const q = flags.query || flags.address || "";
-      return get(`/api/v5/dex/market/token-search?tokenContractAddress=${encodeURIComponent(q)}&chainIndex=${ci}`);
+      return get(`/api/v5/dex/market/token-search?tokenNameOrAddress=${encodeURIComponent(q)}&chainIndex=${ci}`);
     }
     if (sub === "hot-tokens") {
       const tf = flags["time-frame"] || "4";
-      return get(`/api/v5/dex/market/hot-token?chainIndex=${ci}&timeFrame=${tf}`);
+      return get(`/api/v5/dex/market/hot-token?rankingType=4&rankingTimeFrame=${tf}&chainIndex=${ci}`);
     }
     if (sub === "advanced-info") {
       return get(`/api/v5/dex/market/token-security?tokenContractAddress=${flags.address}&chainIndex=${ci}`);
@@ -95,7 +95,7 @@ export async function runHttp(args: string[]): Promise<unknown> {
       return get(`/api/v5/dex/market/token-holder?tokenContractAddress=${flags.address}&chainIndex=${ci}`);
     }
     if (sub === "trending") {
-      return get(`/api/v5/dex/market/hot-token?chainIndex=${ci}&timeFrame=4`);
+      return get(`/api/v5/dex/market/hot-token?rankingType=4&rankingTimeFrame=4&chainIndex=${ci}`);
     }
   }
 
