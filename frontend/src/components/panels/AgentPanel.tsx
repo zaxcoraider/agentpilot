@@ -36,7 +36,7 @@ export function AgentPanel() {
 
   const [agentBalance, setAgentBalance] = useState<AgentBalance | null>(null);
   const [dcaPlans, setDcaPlans] = useState<DcaPlan[]>([]);
-  const [tab, setTab] = useState<"wallet" | "dca" | "swap">("wallet");
+  const [tab, setTab] = useState<"wallet" | "dca" | "swap" | "ai">("wallet");
 
   // Swap form
   const [swapFrom, setSwapFrom] = useState(XLAYER_TOKENS[0]);
@@ -51,6 +51,23 @@ export function AgentPanel() {
   const [dcaAmount, setDcaAmount] = useState("");
   const [dcaInterval, setDcaInterval] = useState("3600");
   const [dcaError, setDcaError] = useState("");
+
+  // AI state
+  interface AiDecision {
+    action: "BUY" | "HOLD" | "SELL" | "WAIT";
+    token?: string;
+    tokenAddress?: string;
+    amount?: string;
+    reasoning: string;
+    confidence: "HIGH" | "MEDIUM" | "LOW";
+    executed?: boolean;
+    txHash?: string;
+    timestamp: number;
+    signals?: unknown[];
+  }
+  const [aiDecision, setAiDecision] = useState<AiDecision | null>(null);
+  const [aiRunning, setAiRunning] = useState(false);
+  const [autoExecute, setAutoExecute] = useState(false);
 
   const loadWallet = useCallback(async () => {
     const r = await get<{ data: AgentBalance }>("/agent/wallet");
@@ -110,6 +127,14 @@ export function AgentPanel() {
     }
   };
 
+  const runAi = async () => {
+    setAiRunning(true);
+    const r = await post<{ data: AiDecision }>("/agent/ai", { autoExecute });
+    if (r?.data) setAiDecision(r.data);
+    setAiRunning(false);
+    if (autoExecute) loadWallet();
+  };
+
   const cancelPlan = async (id: string) => {
     await del(`/agent/dca/${id}`);
     loadPlans();
@@ -162,7 +187,7 @@ export function AgentPanel() {
 
       {/* Tabs */}
       <div className="flex gap-1 px-2 pt-2">
-        {(["wallet", "swap", "dca"] as const).map((t) => (
+        {(["wallet", "ai", "swap", "dca"] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -212,6 +237,90 @@ export function AgentPanel() {
                 </a>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* AI TAB */}
+        {tab === "ai" && (
+          <div className="space-y-2">
+            <p className="data-label">AI TOOLKIT · SIGNAL ANALYSIS</p>
+            <p className="text-xs text-terminal-muted font-mono">Claude analyzes live whale signals → decides → executes via TEE wallet</p>
+
+            <div className="flex items-center gap-2">
+              <label className="flex items-center gap-1 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={autoExecute}
+                  onChange={(e) => setAutoExecute(e.target.checked)}
+                  className="accent-terminal-green"
+                />
+                <span className="text-xs font-mono text-terminal-muted">Auto-execute if BUY</span>
+              </label>
+            </div>
+
+            <button
+              className="btn-primary w-full"
+              onClick={runAi}
+              disabled={aiRunning || loading}
+            >
+              {aiRunning ? "ANALYZING SIGNALS..." : "⬡ RUN AI AGENT"}
+            </button>
+
+            {aiDecision && (
+              <div className="space-y-1.5 mt-1">
+                {/* Action badge */}
+                <div className="flex items-center gap-2">
+                  <span className={`text-sm font-mono font-bold px-2 py-0.5 rounded ${
+                    aiDecision.action === "BUY" ? "bg-terminal-green text-terminal-bg" :
+                    aiDecision.action === "SELL" ? "bg-terminal-red text-terminal-bg" :
+                    "bg-terminal-border text-terminal-muted"
+                  }`}>
+                    {aiDecision.action}
+                  </span>
+                  {aiDecision.token && (
+                    <span className="text-xs font-mono text-terminal-cyan">{aiDecision.token}</span>
+                  )}
+                  <span className={`text-xs font-mono ${
+                    aiDecision.confidence === "HIGH" ? "text-terminal-green" :
+                    aiDecision.confidence === "MEDIUM" ? "text-terminal-cyan" :
+                    "text-terminal-muted"
+                  }`}>
+                    {aiDecision.confidence} confidence
+                  </span>
+                </div>
+
+                {/* Reasoning */}
+                <div className="border border-terminal-border rounded p-2 bg-terminal-bg">
+                  <p className="text-xs font-mono text-terminal-muted leading-relaxed">{aiDecision.reasoning}</p>
+                </div>
+
+                {/* Trade details */}
+                {aiDecision.action === "BUY" && aiDecision.amount && (
+                  <div className="data-row">
+                    <span className="data-label">TRADE</span>
+                    <span className="text-xs font-mono text-terminal-cyan">{aiDecision.amount} OKB → {aiDecision.token}</span>
+                  </div>
+                )}
+
+                {/* Execution result */}
+                {aiDecision.executed && aiDecision.txHash && (
+                  <a
+                    href={`${EXPLORER}/tx/${aiDecision.txHash}`}
+                    target="_blank" rel="noopener noreferrer"
+                    className="text-xs font-mono text-terminal-green hover:underline break-all block"
+                  >
+                    ✓ EXECUTED: {aiDecision.txHash.slice(0, 24)}...
+                  </a>
+                )}
+                {aiDecision.action === "BUY" && !aiDecision.executed && (
+                  <p className="text-xs text-terminal-muted font-mono">Enable auto-execute to trade automatically</p>
+                )}
+
+                <p className="text-xs text-terminal-muted font-mono opacity-50">
+                  {new Date(aiDecision.timestamp).toLocaleTimeString()}
+                </p>
+              </div>
+            )}
           </div>
         )}
 

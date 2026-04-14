@@ -8,6 +8,7 @@ import {
   listDcaPlans,
   getDcaPlan,
 } from "../services/agentWallet";
+import { runAiDecision, getLastAiDecision } from "../services/aiAgent";
 import { logAction } from "../services/registry";
 
 const router = Router();
@@ -55,6 +56,23 @@ router.post("/agent/swap", async (req: Request, res: Response) => {
   try {
     const result = await agentSwap(from, to, amount, chain);
     res.json({ ok: true, data: result });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: (err as Error).message });
+  }
+});
+
+// GET /api/agent/ai — get last AI decision
+router.get("/agent/ai", (_req: Request, res: Response) => {
+  const decision = getLastAiDecision();
+  res.json({ ok: true, data: decision });
+});
+
+// POST /api/agent/ai — run AI analysis (autoExecute=true to also trade)
+router.post("/agent/ai", async (req: Request, res: Response) => {
+  const { autoExecute = false } = req.body;
+  try {
+    const decision = await runAiDecision(Boolean(autoExecute));
+    res.json({ ok: true, data: decision });
   } catch (err) {
     res.status(500).json({ ok: false, error: (err as Error).message });
   }
