@@ -62,12 +62,20 @@ const server = app.listen(PORT, () => {
   startAutonomousAgent();
 });
 
+// Prevent unhandled rejections from crashing the server
+process.on("unhandledRejection", (reason) => {
+  console.error("[unhandledRejection]", reason);
+});
+process.on("uncaughtException", (err) => {
+  console.error("[uncaughtException]", err.message);
+});
+
 // Graceful shutdown
 process.on("SIGINT", async () => {
-  await db.$disconnect();
+  try { await db.$disconnect(); } catch { /* DB not configured */ }
   server.close(() => process.exit(0));
 });
 process.on("SIGTERM", async () => {
-  await db.$disconnect();
+  try { await db.$disconnect(); } catch { /* DB not configured */ }
   server.close(() => process.exit(0));
 });
