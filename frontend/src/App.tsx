@@ -5,7 +5,7 @@ import { TradePanel } from "./components/panels/TradePanel";
 import { ProtectPanel } from "./components/panels/ProtectPanel";
 import { EarnPanel } from "./components/panels/EarnPanel";
 import { MonitorPanel } from "./components/panels/MonitorPanel";
-import { PayPanel } from "./components/panels/PayPanel";
+import { AgentPanel } from "./components/panels/AgentPanel";
 
 export default function App() {
   return (
@@ -22,7 +22,7 @@ export default function App() {
         <ProtectPanel />
         <EarnPanel />
         <MonitorPanel />
-        <PayPanel />
+        <AgentPanel />
       </main>
 
       <Footer />
