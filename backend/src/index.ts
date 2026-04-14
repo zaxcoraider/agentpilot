@@ -11,6 +11,7 @@ import earnRoutes from "./routes/earn";
 import monitorRoutes from "./routes/monitor";
 import payRoutes from "./routes/pay";
 import dcaRoutes from "./routes/dca";
+import agentRoutes from "./routes/agent";
 import analyticsRoutes from "./routes/analytics";
 import { getPaymentStats } from "./services/x402Agent";
 import { db } from "./services/db";
@@ -48,6 +49,7 @@ app.use("/api", earnRoutes);
 app.use("/api", monitorRoutes);
 app.use("/api", payRoutes);
 app.use("/api", dcaRoutes);
+app.use("/api", agentRoutes);
 app.use("/api", analyticsRoutes);
 
 // Global error handler
