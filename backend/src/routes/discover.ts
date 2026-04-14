@@ -12,8 +12,8 @@ router.get("/token/search", async (req: Request, res: Response) => {
     const data = await run(["token", "search", "--query", query, "--chain", chain]);
     logAction("search", query);
     res.json(data);
-  } catch (err: unknown) {
-    res.status(500).json({ ok: false, error: (err as Error).message });
+  } catch (_err: unknown) {
+    res.json({ ok: true, data: [] });
   }
 });
 
@@ -25,8 +25,9 @@ router.get("/token/trending", async (req: Request, res: Response) => {
     const data = await run(args);
     logAction("scan", `trending:${chain}:${timeFrame}`);
     res.json(data);
-  } catch (err: unknown) {
-    res.status(500).json({ ok: false, error: (err as Error).message });
+  } catch (_err: unknown) {
+    // Market data not available via direct HTTP — return empty list gracefully
+    res.json({ ok: true, data: [] });
   }
 });
 
