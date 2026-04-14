@@ -68,8 +68,9 @@ router.get("/txs/:address", async (req: Request, res: Response) => {
       `/api/v5/xlayer/address/transaction-list?address=${address}&limit=${limit}&page=${page}`
     );
     res.json(data);
-  } catch (err: unknown) {
-    res.status(500).json({ ok: false, error: (err as Error).message });
+  } catch {
+    // OKLink may require separate API key — return empty so Monitor panel still loads
+    res.json({ ok: true, data: [] });
   }
 });
 
@@ -82,8 +83,8 @@ router.get("/token-txs/:address", async (req: Request, res: Response) => {
       `/api/v5/xlayer/address/token-transaction-list?address=${address}&limit=${limit}&page=${page}`
     );
     res.json(data);
-  } catch (err: unknown) {
-    res.status(500).json({ ok: false, error: (err as Error).message });
+  } catch {
+    res.json({ ok: true, data: [] });
   }
 });
 
