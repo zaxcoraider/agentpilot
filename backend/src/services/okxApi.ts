@@ -114,26 +114,26 @@ export async function runHttp(args: string[]): Promise<unknown> {
   // ── swap ───────────────────────────────────────────────────────────────────
   if (cmd === "swap") {
     if (sub === "chains") return get(`/api/v6/dex/aggregator/supported/chain`);
-    if (sub === "liquidity") return get(`/api/v6/dex/aggregator/get-liquidity?chainId=${ci}`);
+    if (sub === "liquidity") return get(`/api/v6/dex/aggregator/get-liquidity?chainIndex=${ci}`);
     if (sub === "quote") {
       const amount = flags["readable-amount"]
         ? String(Math.round(parseFloat(flags["readable-amount"]) * 1e18))
         : flags.amount || "0";
-      return get(`/api/v6/dex/aggregator/quote?chainId=${ci}&fromTokenAddress=${flags.from}&toTokenAddress=${flags.to}&amount=${amount}&swapMode=exactIn`);
+      return get(`/api/v6/dex/aggregator/quote?chainIndex=${ci}&fromTokenAddress=${flags.from}&toTokenAddress=${flags.to}&amount=${amount}&swapMode=exactIn`);
     }
     if (sub === "swap") {
       const amount = flags["readable-amount"]
         ? String(Math.round(parseFloat(flags["readable-amount"]) * 1e18))
         : flags.amount || "0";
       const slippage = flags.slippagePercent || flags.slippage || "0.5";
-      return get(`/api/v6/dex/aggregator/swap?chainId=${ci}&fromTokenAddress=${flags.from}&toTokenAddress=${flags.to}&amount=${amount}&userWalletAddress=${flags.wallet}&slippagePercent=${slippage}&swapMode=exactIn`);
+      return get(`/api/v6/dex/aggregator/swap?chainIndex=${ci}&fromTokenAddress=${flags.from}&toTokenAddress=${flags.to}&amount=${amount}&userWalletAddress=${flags.wallet}&slippagePercent=${slippage}&swapMode=exactIn`);
     }
     if (sub === "approve") {
       const amount = flags.amount || "115792089237316195423570985008687907853269984665640564039457584007913129639935";
-      return get(`/api/v6/dex/aggregator/approve-transaction?chainId=${ci}&tokenContractAddress=${flags.token}&approveAmount=${amount}`);
+      return get(`/api/v6/dex/aggregator/approve-transaction?chainIndex=${ci}&tokenContractAddress=${flags.token}&approveAmount=${amount}`);
     }
     if (sub === "check-approvals") {
-      return get(`/api/v6/dex/aggregator/token-approval-lock?chainId=${ci}&tokenContractAddress=${flags.token}&walletAddress=${flags.address}`);
+      return get(`/api/v6/dex/aggregator/token-approval-lock?chainIndex=${ci}&tokenContractAddress=${flags.token}&walletAddress=${flags.address}`);
     }
   }
 
