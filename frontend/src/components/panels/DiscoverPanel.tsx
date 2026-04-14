@@ -228,7 +228,7 @@ export function DiscoverPanel() {
             <p className="text-xs text-terminal-muted font-mono">Select a chain to load whale activity</p>
           )}
           {signalStatus === "error" && (
-            <p className="text-xs text-terminal-red font-mono">No signal data returned for {signalChain} — try Ethereum or Solana</p>
+            <p className="text-xs text-terminal-muted font-mono">Smart money signals available via onchainos CLI — try ETH or SOL</p>
           )}
           {signalStatus === "done" && signals.length === 0 && (
             <p className="text-xs text-terminal-muted font-mono">No signals found</p>
