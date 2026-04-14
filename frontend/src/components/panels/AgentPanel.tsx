@@ -46,7 +46,8 @@ interface TokenAsset {
 interface WalletInfo {
   address: string;
   type: string;
-  balance?: { data?: { details?: Array<{ tokenAssets?: TokenAsset[] }> } };
+  // balance.data is an array: [{ tokenAssets: [...] }]
+  balance?: { ok?: boolean; data?: Array<{ tokenAssets?: TokenAsset[] }> };
 }
 
 const ACTION_COLOR: Record<string, string> = {
@@ -137,10 +138,13 @@ export function AgentPanel() {
   }, [loadAll]);
 
   const getTokens = (w: WalletInfo | null) =>
-    w?.balance?.data?.details?.[0]?.tokenAssets || [];
+    w?.balance?.data?.[0]?.tokenAssets || [];
 
   const totalUsd = (w: WalletInfo | null) =>
-    getTokens(w).reduce((s, t) => s + Number(t.usdValue || 0), 0);
+    getTokens(w).reduce((s, t) => {
+      const usd = t.usdValue ? Number(t.usdValue) : Number(t.balance) * Number(t.tokenPrice || 0);
+      return s + usd;
+    }, 0);
 
   const runTeeAi = async () => {
     setTeeRunning(true);
@@ -302,7 +306,7 @@ export function AgentPanel() {
               <div key={i} className="data-row">
                 <span className="text-xs font-mono text-terminal-cyan w-12">{t.symbol}</span>
                 <span className="text-xs font-mono text-terminal-text">{Number(t.balance).toFixed(5)}</span>
-                <span className="text-xs font-mono text-terminal-green">${Number(t.usdValue).toFixed(2)}</span>
+                <span className="text-xs font-mono text-terminal-green">${(t.usdValue ? Number(t.usdValue) : Number(t.balance) * Number(t.tokenPrice || 0)).toFixed(2)}</span>
               </div>
             ))}
 

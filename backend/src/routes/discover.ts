@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { run } from "../services/onchainos";
 import { logAction } from "../services/registry";
 import { x402 } from "../middleware/x402";
+import { AGENTIC_WALLET } from "../services/agentWallet";
 
 const router = Router();
 
@@ -26,17 +27,45 @@ const XLAYER_TOKENS = [
   { tokenSymbol: "WETH", tokenName: "Wrapped Ether", tokenContractAddress: "0x5a77f1443d16ee5761d310e38b62f77f726bC71c", price: 0, change: 0 },
 ];
 
+// Fetch live prices for fallback tokens from the agent wallet balance API (which always works)
+async function enrichTokenPrices(tokens: typeof XLAYER_TOKENS) {
+  try {
+    const walletData = await run([
+      "portfolio", "all-balances",
+      "--address", AGENTIC_WALLET,
+      "--chain", "xlayer",
+    ]) as { ok?: boolean; data?: Array<{ tokenAssets?: Array<{ symbol: string; tokenPrice: string }> }> };
+    const assets = walletData?.data?.[0]?.tokenAssets || [];
+    const priceMap: Record<string, number> = {};
+    for (const a of assets) {
+      if (a.symbol && a.tokenPrice) priceMap[a.symbol.toUpperCase()] = Number(a.tokenPrice);
+    }
+    return tokens.map(t => ({
+      ...t,
+      price: priceMap[t.tokenSymbol.toUpperCase()] ?? t.price,
+    }));
+  } catch {
+    return tokens;
+  }
+}
+
 // FREE — GET /api/token/trending?chain=xlayer&timeFrame=4
 router.get("/token/trending", async (req: Request, res: Response) => {
   try {
     const { chain = "xlayer", timeFrame = "4" } = req.query as Record<string, string>;
     const args = ["token", "hot-tokens", "--chain", chain, "--time-frame", timeFrame];
-    const data = await run(args);
+    const data = await run(args) as { ok?: boolean; data?: unknown[] };
     logAction("scan", `trending:${chain}:${timeFrame}`);
-    res.json(data);
+    // If API returned data but prices are 0, enrich with live prices
+    if (data?.ok && Array.isArray(data.data) && data.data.length > 0) {
+      res.json(data);
+    } else {
+      throw new Error("no data");
+    }
   } catch (_err: unknown) {
-    // Market data not available via direct HTTP — return known X Layer tokens
-    res.json({ ok: true, data: XLAYER_TOKENS });
+    // Market data not available via direct HTTP — return known tokens with live prices
+    const enriched = await enrichTokenPrices(XLAYER_TOKENS);
+    res.json({ ok: true, data: enriched });
   }
 });
 
