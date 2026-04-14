@@ -17,6 +17,15 @@ router.get("/token/search", async (req: Request, res: Response) => {
   }
 });
 
+// Known X Layer tokens — used as fallback when market data API is unavailable
+const XLAYER_TOKENS = [
+  { tokenSymbol: "OKB",  tokenName: "OKB",          tokenContractAddress: "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE", price: 0, change: 0 },
+  { tokenSymbol: "USDT", tokenName: "Tether USD",    tokenContractAddress: "0x1E4a5963aBFD975d8c9021ce480b42188849D41d", price: 1, change: 0 },
+  { tokenSymbol: "USDC", tokenName: "USD Coin",      tokenContractAddress: "0x74b7f16337b8972027f6196a17a631ac6de26d22", price: 1, change: 0 },
+  { tokenSymbol: "WBTC", tokenName: "Wrapped BTC",   tokenContractAddress: "0xEA034fb02eB1808C2cc3adbC15f447B93CbE08e1", price: 0, change: 0 },
+  { tokenSymbol: "WETH", tokenName: "Wrapped Ether", tokenContractAddress: "0x5a77f1443d16ee5761d310e38b62f77f726bC71c", price: 0, change: 0 },
+];
+
 // FREE — GET /api/token/trending?chain=xlayer&timeFrame=4
 router.get("/token/trending", async (req: Request, res: Response) => {
   try {
@@ -26,8 +35,8 @@ router.get("/token/trending", async (req: Request, res: Response) => {
     logAction("scan", `trending:${chain}:${timeFrame}`);
     res.json(data);
   } catch (_err: unknown) {
-    // Market data not available via direct HTTP — return empty list gracefully
-    res.json({ ok: true, data: [] });
+    // Market data not available via direct HTTP — return known X Layer tokens
+    res.json({ ok: true, data: XLAYER_TOKENS });
   }
 });
 
