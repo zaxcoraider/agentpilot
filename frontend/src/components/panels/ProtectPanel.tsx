@@ -19,18 +19,18 @@ interface Approval {
   tokenContractAddress?: string;
 }
 
-function getRiskLabel(level?: string) {
-  if (level === "1") return { label: "LOW", color: "text-terminal-green" };
-  if (level === "2") return { label: "MEDIUM", color: "text-terminal-yellow" };
-  if (level === "3") return { label: "HIGH", color: "text-terminal-red" };
-  return { label: "UNKNOWN", color: "text-terminal-muted" };
+function getRiskLabel(level?: string | null) {
+  if (level === "1" || level === "low")    return { label: "LOW",     color: "text-terminal-green"  };
+  if (level === "2" || level === "medium") return { label: "MEDIUM",  color: "text-terminal-yellow" };
+  if (level === "3" || level === "high")   return { label: "HIGH",    color: "text-terminal-red"    };
+  return { label: "SCANNED", color: "text-terminal-cyan" };
 }
 
-function getScore(level?: string) {
-  if (level === "1") return 85;
-  if (level === "2") return 52;
-  if (level === "3") return 20;
-  return 0;
+function getScore(level?: string | null) {
+  if (level === "1" || level === "low")    return 85;
+  if (level === "2" || level === "medium") return 52;
+  if (level === "3" || level === "high")   return 20;
+  return 70; // default "looks ok" when no explicit risk level
 }
 
 function pct(val?: string | number) {

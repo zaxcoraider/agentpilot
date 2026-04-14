@@ -1,236 +1,266 @@
-# AgentPilot — The Autonomous DeFi Agent Cockpit for X Layer
+# AgentPilot
 
-> **OKX Build X Hackathon Season 2 · X Layer Arena + Skills Arena**
+**Autonomous DeFi agent dashboard powered by OKX OnchainOS on X Layer**
 
-AgentPilot is a fully autonomous AI-powered DeFi management dashboard built on X Layer. It combines real-time on-chain data, OKX OnchainOS skills, a Uniswap V4 DCA hook, and an MCP server into a single cockpit — enabling any user or AI agent to discover, trade, protect, earn, monitor, and pay autonomously on X Layer.
-
-**2,471+ on-chain transactions** logged to `AgentPilotRegistry.sol` on X Layer mainnet.
-
----
-
-## Live Demo
-
-- **Frontend**: [Deployed on Vercel]
-- **Backend API**: [Deployed on Railway]
-- **Agentic Wallet**: `0x60f48fcF696f77ca20fE0e06028fd25086a8F3D0`
-- **Registry Contract (X Layer)**: `0xF8139F3ff5c6a902ad0E18e0A3Bf49eA81eA107e`
-- **SimpleDCA Contract (Arbitrum Sepolia)**: `0xF8139F3ff5c6a902ad0E18e0A3Bf49eA81eA107e`
-- **Explorer**: [View Agent Activity on OKLink](https://www.oklink.com/xlayer/address/0x60f48fcF696f77ca20fE0e06028fd25086a8F3D0)
+Live: [agentpilot-nu.vercel.app](https://agentpilot-nu.vercel.app)  
+API: [agentpilot-production-34c7.up.railway.app](https://agentpilot-production-34c7.up.railway.app)  
+Built for [OKX Build X Hackathon Season 2](https://www.okx.com/web3/build/hackathon)
 
 ---
 
-## What AgentPilot Does
+## What is AgentPilot?
 
-AgentPilot collapses the entire DeFi workflow into one autonomous agent dashboard:
+AgentPilot is an all-in-one autonomous DeFi cockpit that puts two AI-driven trading agents in a single terminal-style dashboard. It is built around the four OKX OnchainOS pillars:
 
-| Panel | What It Does |
+| Pillar | Implementation |
 |---|---|
-| **Discover** | Hot tokens, whale movements, smart money signals across ETH/SOL/BNB |
-| **Trade** | AUTO SWAP (agent signs autonomously) + MY WALLET (user signs) + DCA (Uniswap V4) |
-| **Protect** | Token risk scan — auto-triggered when selecting tokens from Discover |
-| **Earn** | Browse top DeFi yield products, deposit via OKX OnchainOS |
-| **Monitor** | Wallet balance, OKB price chart, on-chain action count, autonomous agent status |
-| **Pay** | x402 EIP-3009 micropayments — agent pays for its own intelligence |
-
----
-
-## Autonomous Agent
-
-AgentPilot runs a **self-directed trading strategy** every 30 minutes:
-
-```
-1. Check agent wallet OKB balance (safety floor: 0.005 OKB)
-2. Fetch OKX OnchainOS smart money signals + trending tokens on X Layer
-3. Score each token: signal strength + trending rank
-4. If best score ≥ 30 → swap 0.001 OKB into that token
-5. Log decision + reasoning on-chain to AgentPilotRegistry.sol
-6. Repeat
-```
-
-**Kill switch**: Monitor panel has a live **PAUSE / RESUME** toggle — stop the agent instantly without touching the server.
+| **Agentic Wallet** | OKX TEE-secured wallet executes swaps autonomously — no private key exposed |
+| **AI Toolkit** | Claude Haiku analyses live whale signals and decides BUY/HOLD/WAIT every cycle |
+| **Trade** | OKX DEX Aggregator V6 — swap, quote, approve, DCA via Uniswap V4 hook |
+| **Payment** | x402 protocol + EIP-3009 USDT micropayments gate premium API endpoints |
 
 ---
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        FRONTEND (React + Wagmi)                  │
-│  Discover │ Trade │ Protect │ Earn │ Monitor │ Pay               │
-│  Click trending token → auto-fills Trade + Protect panels        │
-│  Multi-wallet: OKX, MetaMask, Coinbase, WalletConnect, Rabby     │
-└──────────────────────────┬──────────────────────────────────────┘
-                           │ /api (REST)
-┌──────────────────────────▼──────────────────────────────────────┐
-│                    BACKEND (Express + Node.js)                    │
-│                                                                   │
-│  Routes: swap, discover, protect, earn, dca, monitor, pay        │
-│  AutonomousAgent → 30-min cycle, signal-scored trading strategy  │
-│  x402 Middleware → EIP-3009 USDT micropayment gate (production)  │
-│  x402Agent → auto-pays 402s via onchainos payment eip3009-sign   │
-│  Registry Service → logs every action on-chain (X Layer)         │
-│  OnchainOS CLI → token, swap, defi, signal, market, portfolio    │
-└──────┬───────────────────────┬───────────────────────────────────┘
-       │                       │
-┌──────▼──────┐    ┌───────────▼──────────────────────────────────┐
-│  MCP SERVER │    │              SMART CONTRACTS                   │
-│  7 AI tools │    │                                               │
-│  stdio/SSE  │    │  AgentPilotRegistry.sol (X Layer :196)        │
-│  Claude/GPT │    │  → logAction(), 2,471+ actions recorded       │
-└─────────────┘    │                                               │
-                   │  AutoDCAHook.sol (Uniswap V4, Arb Sepolia)   │
-                   │  → createPlan(), executeDCA(), DCAReady       │
-                   │                                               │
-                   │  SimpleDCA.sol (Arbitrum Sepolia :421614)     │
-                   │  → createPlan(), isPlanDue(), markExecuted()  │
-                   └───────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                    FRONTEND  (Vercel)                        │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐       │
+│  │ Discover │ │  Trade   │ │ Protect  │ │   Earn   │       │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────┘       │
+│  ┌──────────┐ ┌────────────────────────────────────┐        │
+│  │ Monitor  │ │         Agent (Dual-Agent)          │        │
+│  └──────────┘ └────────────────────────────────────┘        │
+└─────────────────────────────────────────────────────────────┘
+                          │ /api/* (proxied via vercel.json)
+┌─────────────────────────────────────────────────────────────┐
+│                    BACKEND  (Railway)                        │
+│  Express + TypeScript                                        │
+│  ┌──────────────────┐  ┌──────────────────────────────┐     │
+│  │  OKX DEX API V6  │  │  OKLink X Layer Explorer API │     │
+│  │  - Aggregator    │  │  - Transaction history       │     │
+│  │  - Market data   │  │  - Token transfers           │     │
+│  │  - Balances      │  └──────────────────────────────┘     │
+│  └──────────────────┘                                        │
+│  ┌─────────────────────────────────────────────────┐        │
+│  │              DUAL AGENT ENGINE                  │        │
+│  │                                                 │        │
+│  │  TEE Agent (OKX Agentic Wallet)                 │        │
+│  │  ├─ Claude Haiku analyses whale signals         │        │
+│  │  ├─ Auto-executes BUY via TEE wallet            │        │
+│  │  └─ Autonomous DCA with configurable intervals  │        │
+│  │                                                 │        │
+│  │  PK Agent (Private Key Wallet)                  │        │
+│  │  ├─ Follows TEE agent signals (larger position) │        │
+│  │  ├─ Portfolio rebalancing (OKB >80% → sell 25%) │        │
+│  │  └─ Autonomous DCA scheduler (15s polling)      │        │
+│  └─────────────────────────────────────────────────┘        │
+│  ┌──────────────────┐  ┌──────────────────────────────┐     │
+│  │  x402 Middleware │  │  AgentPilotRegistry (on-chain)│     │
+│  │  EIP-3009 USDT   │  │  Every action logged to       │     │
+│  │  micropayments   │  │  X Layer mainnet              │     │
+│  └──────────────────┘  └──────────────────────────────┘     │
+└─────────────────────────────────────────────────────────────┘
+                          │
+┌─────────────────────────────────────────────────────────────┐
+│                      CONTRACTS                               │
+│  X Layer Mainnet                                            │
+│  └─ AgentPilotRegistry.sol  0xF8139F3ff5c6a902ad0E18e0A3Bf49eA81eA107e  │
+│                                                             │
+│  Arbitrum Sepolia                                           │
+│  ├─ AutoDCAHook.sol (Uniswap V4)  0xF8139F3ff5c6a902ad0E18e0A3Bf49eA81eA107e  │
+│  └─ SimpleDCA.sol               0xF8139F3ff5c6a902ad0E18e0A3Bf49eA81eA107e  │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## OnchainOS Skills Used
+## Panels
 
-| Panel | OnchainOS Skills |
+### ◈ Discover
+- Hot tokens across **X Layer, ETH, SOL, BNB, BASE** with 5M / 1H / 4H / 24H timeframes
+- Token search by name, symbol, or address
+- Smart Money signals — whale wallet accumulation scoring
+- Click any token → auto-fills Trade and Protect panels
+
+### ⇄ Trade
+- **AUTO SWAP** — backend signs with agent private key, executes on X Layer
+- **MY WALLET** — MetaMask / OKX Wallet signs, you hold the key
+- **DCA** — recurring swap plans via Uniswap V4 AutoDCAHook (Arb Sepolia)
+- Real-time quotes from OKX DEX Aggregator V6
+
+### ⚿ Protect
+- Token security scan via OKX `token/advanced-info` API
+- Safety score ring (0–100), top 10 holder %, LP burn %, bundle detection
+- Approval checker — see unlimited approvals on your wallet
+
+### ◎ Earn
+- DeFi product browser (Aave, Compound, Lido, Yearn, Venus, PancakeSwap …)
+- APR rates, TVL, supported chains
+- One-click invest flow via OKX DeFi API
+
+### ◉ Monitor
+- Connected wallet balance + OKB price chart (24H candles)
+- **Real X Layer transaction history** via OKLink API — SEND/RECV labels, token amounts, clickable tx hashes
+- Total on-chain action count (live from RPC)
+- Autonomous agent status — last decision, pause/resume
+
+### ⬡ Agent (Dual-Agent)
+**TEE Agent** — `0xae5816be55e5c36fcb7f7ba61dcfefac70715c0c`
+- Claude Haiku AI analyses whale signals → BUY / HOLD / WAIT
+- Executes via OKX TEE-secured agentic wallet (no private key)
+- Autonomous DCA with configurable pair + interval
+
+**PK Agent** — `0x60f48fcF696f77ca20fE0e06028fd25086a8F3D0`
+- FOLLOW_TEE: copies TEE trades with 20% OKB position
+- REBALANCE: sells 25% OKB when portfolio > 80% concentrated
+- Autonomous DCA scheduler (15s polling loop)
+
+---
+
+## Key Addresses
+
+### Wallets
+| Wallet | Address | Chain |
+|---|---|---|
+| OKX Agentic (TEE) | `0xae5816be55e5c36fcb7f7ba61dcfefac70715c0c` | X Layer |
+| Agent / PK Wallet | `0x60f48fcF696f77ca20fE0e06028fd25086a8F3D0` | X Layer |
+
+### Contracts
+| Contract | Address | Chain |
+|---|---|---|
+| AgentPilotRegistry | `0xF8139F3ff5c6a902ad0E18e0A3Bf49eA81eA107e` | X Layer Mainnet |
+| AutoDCAHook (Uniswap V4) | `0xF8139F3ff5c6a902ad0E18e0A3Bf49eA81eA107e` | Arbitrum Sepolia |
+| SimpleDCA | `0xF8139F3ff5c6a902ad0E18e0A3Bf49eA81eA107e` | Arbitrum Sepolia |
+
+### Token Addresses (X Layer Mainnet)
+| Token | Address |
 |---|---|
-| Discover | `token search`, `token hot-tokens`, `signal list` |
-| Trade | `swap quote`, `swap swap`, `swap approve`, `swap check-approvals`, `gateway gas` |
-| Protect | `token advanced-info`, `swap check-approvals` |
-| Earn | `defi list`, `defi invest` |
-| Monitor | `portfolio all-balances`, `market kline` |
-| Pay | `payment eip3009-sign` |
-| Autonomous Agent | `signal list`, `token hot-tokens`, `portfolio token-balances`, `swap swap` |
-
-**MCP Servers connected**: `onchainos-cli` (local), `onchainos-mcp` (HTTP at web3.okx.com)
-
----
-
-## x402 Payment Flow
-
-AgentPilot implements **EIP-3009 USDT micropayments** — zero gas, off-chain signatures:
-
-```
-1. Agent hits premium endpoint → 402 Payment Required
-2. Backend returns accepts[] (USDT, EIP-3009, X Layer :196)
-3. onchainos payment eip3009-sign signs USDT transfer off-chain
-4. Agent retries with X-PAYMENT: base64(authorization + signature)
-5. OKX Payment API verifies → endpoint unlocked
-6. Response returned — zero gas, instant
-```
-
-**x402-gated endpoints** ($0.001 USDT each):
-
-| Endpoint | Description |
-|---|---|
-| `GET /api/signal/smart-money` | Smart money signals |
-| `GET /api/security/token-risk/:address` | Token risk scan |
-| `GET /api/defi/products` | DeFi yield products |
-| `POST /api/defi/invest` | DeFi invest tx builder |
-| `POST /api/swap/agent-execute` | Autonomous swap execution |
-
----
-
-## Economy Loop
-
-```
-User pays x402 to use agent features
-         ↓
-Agent earns micropayments in USDT
-         ↓
-Agent uses OKB balance to swap autonomously
-         ↓
-Autonomous strategy generates more activity
-         ↓
-More on-chain logs → Most Active Agent prize
-         ↓
-Loop repeats — self-sustaining agent economy
-```
+| OKB (native) | `0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE` |
+| USDT | `0x1E4a5963aBFD975d8c9021ce480b42188849D41d` |
+| USDC | `0x74b7f16337b8972027f6196a17a631ac6de26d22` |
+| WBTC | `0xEA034fb02eB1808C2cc3adbC15f447B93CbE08e1` |
+| WETH | `0x5a77f1443d16ee5761d310e38b62f77f726bC71c` |
 
 ---
 
 ## MCP Server (Skills Arena)
 
-Located in `/mcp-server/` — exposes **7 tools** any Claude/GPT agent can call:
+AgentPilot ships a 7-tool MCP server for Claude Desktop and any MCP client:
 
 | Tool | Description |
 |---|---|
-| `agentpilot_search_token` | Search tokens on X Layer |
-| `agentpilot_check_risk` | Security scan any token |
-| `agentpilot_swap` | Execute real DEX swap on X Layer |
-| `agentpilot_check_balance` | Get wallet token balances |
-| `agentpilot_defi_explore` | Browse DeFi yield products |
-| `agentpilot_create_dca` | Create on-chain DCA plan |
-| `agentpilot_pay` | Send OKB payment via x402 |
+| `search_token` | Search tokens by name/symbol/address |
+| `check_risk` | Scan token security risk score |
+| `swap` | Execute a swap via OKX DEX Aggregator |
+| `check_balance` | Get wallet token balances |
+| `defi_explore` | Browse DeFi yield products |
+| `create_dca` | Create an autonomous DCA plan |
+| `pay` | Send OKB payment via x402 |
 
----
-
-## Security
-
-- **CORS**: Restricted to deployed frontend domain only
-- **Rate limiting**: 1 agent swap per IP per 10 min, 5 max per day
-- **Amount cap**: Agent swaps capped at 1 unit max
-- **Admin key**: Pause/resume + manual payments require `ADMIN_KEY`
-- **x402**: All premium endpoints payment-gated in production
-
----
-
-## Deployment Addresses
-
-| Contract | Network | Address |
-|---|---|---|
-| AgentPilotRegistry | X Layer Mainnet (196) | `0xF8139F3ff5c6a902ad0E18e0A3Bf49eA81eA107e` |
-| AutoDCAHook | Arbitrum Sepolia (421614) | `0xF8139F3ff5c6a902ad0E18e0A3Bf49eA81eA107e` |
-| SimpleDCA | Arbitrum Sepolia (421614) | `0xF8139F3ff5c6a902ad0E18e0A3Bf49eA81eA107e` |
-
-**Agentic Wallet**: `0x60f48fcF696f77ca20fE0e06028fd25086a8F3D0`
-
----
-
-## Local Setup
-
-```bash
-# Clone
-git clone https://github.com/zaxcoraider/agentpilot
-cd agentpilot
-
-# Install deps
-npm install
-cd backend && npm install
-cd ../frontend && npm install
-cd ../mcp-server && npm install
-
-# Configure env
-cp .env.example .env
-# Required: OKX_API_KEY, OKX_SECRET_KEY, OKX_PASSPHRASE, PRIVATE_KEY, XLAYER_RPC
-# Optional: DATABASE_URL (PostgreSQL), ADMIN_KEY
-
-# Run backend (port 3001)
-cd backend && npm run dev
-
-# Run frontend (port 5173)
-cd frontend && npm run dev
+### Connect (stdio)
+```json
+{
+  "mcpServers": {
+    "agentpilot": {
+      "command": "node",
+      "args": ["path/to/agentpilot/mcp-server/dist/index.js"]
+    }
+  }
+}
 ```
 
 ---
 
 ## Tech Stack
 
-| Layer | Technology |
+| Layer | Stack |
 |---|---|
-| Frontend | React 18, TypeScript, Tailwind CSS, Wagmi v2, Ethers.js v6, Recharts |
-| Backend | Node.js, Express, TypeScript, OKX OnchainOS CLI |
-| Contracts | Solidity 0.8.20, Hardhat, X Layer + Arbitrum Sepolia |
-| AI/MCP | @modelcontextprotocol/sdk, stdio transport |
-| Payments | x402, EIP-3009, USDT on X Layer (zero gas) |
-| Wallets | MetaMask, OKX Wallet, Coinbase, WalletConnect, Rabby |
+| Frontend | React 18, TypeScript, Tailwind CSS, Wagmi v2, Recharts |
+| Backend | Node.js 20, Express, TypeScript |
+| Blockchain | ethers.js v6, X Layer Mainnet (chainId 196) |
+| AI | Claude Haiku `claude-haiku-4-5-20251001` (rule-based fallback if no key) |
+| OKX APIs | DEX Aggregator V6, Market V6, Balance V6, OKLink X Layer Explorer |
+| Contracts | Solidity 0.8.20, Hardhat |
+| Payment | x402 protocol, EIP-3009 USDT zero-gas micropayments |
+| Deploy | Railway (backend + full-stack Docker), Vercel (frontend) |
 
 ---
 
-## Team
+## Local Development
 
-**zaxcoraider** — Full-stack developer, smart contract engineer
+### Prerequisites
+- Node.js 20+
+- `onchainos` CLI (Windows) — `onchainos wallet login` for TEE wallet
+
+### Setup
+```bash
+git clone https://github.com/zaxcoraider/agentpilot
+cd agentpilot
+
+# Install all deps
+cd backend  && npm install
+cd ../frontend && npm install
+```
+
+### Environment (`.env` at repo root)
+```env
+OKX_API_KEY=
+OKX_SECRET_KEY=
+OKX_PASSPHRASE=
+
+PRIVATE_KEY=              # PK wallet private key
+EVM_PRIVATE_KEY=          # Same key (used by pkAgent + agentWallet fallback)
+AGENTIC_WALLET=0xae5816be55e5c36fcb7f7ba61dcfefac70715c0c
+AGENTIC_WALLET_ADDRESS=0x60f48fcF696f77ca20fE0e06028fd25086a8F3D0
+PK_WALLET_ADDRESS=0x60f48fcF696f77ca20fE0e06028fd25086a8F3D0
+
+ANTHROPIC_API_KEY=        # Optional — falls back to rule-based signal engine
+
+XLAYER_RPC=https://rpc.xlayer.tech
+CONTRACT_ADDRESS=0xF8139F3ff5c6a902ad0E18e0A3Bf49eA81eA107e
+USDT_ADDRESS=0x1E4a5963aBFD975d8c9021ce480b42188849D41d
+ADMIN_KEY=your-admin-key
+NODE_ENV=development
+```
+
+### Run
+```bash
+# Terminal 1
+cd backend && npm run dev     # http://localhost:3001
+
+# Terminal 2
+cd frontend && npm run dev    # http://localhost:5173
+```
 
 ---
 
-## License
+## Deploy
 
-MIT
+### Railway (Backend)
+1. Connect GitHub repo, set root directory to `/`
+2. Railway uses `Dockerfile` at repo root (builds frontend + backend together)
+3. Add all env vars in Railway → Variables
+
+### Vercel (Frontend)
+- Vercel auto-detects `frontend/` Vite project
+- API calls proxied to Railway via `frontend/vercel.json` rewrites
+- No env vars needed (all addresses are hardcoded with fallbacks)
+
+---
+
+## On-Chain Activity
+
+The agent wallet has logged **1,900+ transactions** on X Layer mainnet.
+
+[View on OKLink →](https://www.oklink.com/xlayer/address/0x60f48fcF696f77ca20fE0e06028fd25086a8F3D0)
+
+---
+
+## Hackathon
+
+**OKX Build X Hackathon Season 2**
+- X Layer Arena — main + special prizes
+- Skills Arena — MCP server submission
+- Prize targets: Main Prize · Most Active Agent · Best x402 · Best MCP Integration · Best Economy Loop · Best Uniswap Integration

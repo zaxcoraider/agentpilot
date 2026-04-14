@@ -55,6 +55,7 @@ function fmtNum(n: number): string {
 }
 
 const TRENDING_CHAINS = [
+  { id: "xlayer",   label: "X Layer" },
   { id: "ethereum", label: "ETH" },
   { id: "solana",   label: "SOL" },
   { id: "bsc",      label: "BNB" },
@@ -76,7 +77,7 @@ export function DiscoverPanel() {
   const [results, setResults] = useState<Token[]>([]);
 
   const [trending, setTrending] = useState<Token[]>([]);
-  const [trendingChain, setTrendingChain] = useState("ethereum");
+  const [trendingChain, setTrendingChain] = useState("xlayer");
   const [trendingTimeFrame, setTrendingTimeFrame] = useState("4");
   const [trendingStatus, setTrendingStatus] = useState<"loading" | "done" | "error">("loading");
 
