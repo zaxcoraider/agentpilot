@@ -110,7 +110,7 @@ export function TradePanel() {
       setTxHash(r.data.txHash);
       setSwapStatus("Swap confirmed!");
     } else {
-      setSwapError(r?.error || "Swap failed — check agent wallet balance");
+      setSwapError(r?.error || "Swap failed");
       setSwapStatus("");
     }
   };

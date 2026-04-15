@@ -140,7 +140,7 @@ const IP_COOLDOWN_MS = 10 * 60 * 1000; // 10 minutes
 // POST /api/swap/agent-execute
 // One-shot: quote → approve (if needed) → swap → sign & broadcast → txHash
 // Uses onchainos swap execute with agent wallet
-router.post("/swap/agent-execute", x402(), async (req: Request, res: Response) => {
+router.post("/swap/agent-execute", async (req: Request, res: Response) => {
   const { from, to, amount, readableAmount, chain = "xlayer", slippage } = req.body;
 
   if (!from || !to || (!amount && !readableAmount)) {
