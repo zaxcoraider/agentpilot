@@ -258,9 +258,51 @@ The agent wallet has logged **1,900+ transactions** on X Layer mainnet.
 
 ---
 
-## Hackathon
+## Roadmap
 
-**OKX Build X Hackathon Season 2**
-- X Layer Arena — main + special prizes
-- Skills Arena — MCP server submission
-- Prize targets: Main Prize · Most Active Agent · Best x402 · Best MCP Integration · Best Economy Loop · Best Uniswap Integration
+AgentPilot v1 is a working demo. Here is what comes next.
+
+### Phase 1 — Foundation *(current)*
+- Six-module dashboard live on X Layer mainnet
+- All OKX OnchainOS skills integrated
+- AgentPilotRegistry.sol for on-chain action logging
+- x402 micropayment gating for premium endpoints
+- Uniswap V4 Auto-DCA hook deployed
+- MCP server packaged for Claude Code / Cursor / any MCP client
+
+### Phase 2 — Multi-Agent & Auth
+- Sign-In with Ethereum + email magic links
+- Multi-agent support — create and manage up to 5 agents per account
+- PostgreSQL for persistent storage, Redis for session management
+- Alert engine — Telegram / email on price thresholds, security flags, wallet drops
+- Per-agent spending limits and emergency kill switches
+
+### Phase 3 — Real-Time Intelligence
+- Replace polling with full WebSocket streaming (prices, signals, agent actions)
+- Real-time P&L calculation across all agents
+- Public API with OpenAPI docs and TypeScript SDK
+- Tiered pricing: Free · Pro · Enterprise — all paid via x402 on X Layer
+
+### Phase 4 — Agent Marketplace
+- Developers publish and monetize pre-built agent strategies
+- One-click install: yield optimizer, meme sniper, cross-DEX arb bot, and more
+- Strategy creators earn revenue via x402 micropayments, automatically settled
+- Composable agent pipelines — one agent's output feeds another agent's input
+
+### Phase 5 — Cross-Chain Expansion
+- Expand beyond X Layer: Ethereum, Base, Arbitrum, Solana
+- Unified cross-chain command center — discover, trade, earn across any supported network
+- Smart routing selects the best chain per operation (gas, liquidity, speed)
+- Consolidated cross-chain portfolio and P&L
+
+### Phase 6 — Enterprise & Institutional
+- Role-based access control, compliance audit trails, white-label deployment
+- OKX Agent Trade Kit integration — CEX + DEX in one continuous environment
+- KYA (Know Your Agent) — link autonomous actions back to human accountability
+- Fleet management for 50+ agents at institutional scale
+
+---
+
+## Built With
+
+**OKX Build X Hackathon Season 2** — X Layer Arena + Skills Arena
