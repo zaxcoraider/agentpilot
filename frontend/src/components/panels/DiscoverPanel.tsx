@@ -128,7 +128,7 @@ export function DiscoverPanel() {
 
   const search = async () => {
     if (!query.trim()) return;
-    const r = await get<unknown>(`/token/search?query=${encodeURIComponent(query)}&chain=ethereum`);
+    const r = await get<unknown>(`/token/search?query=${encodeURIComponent(query)}&chain=xlayer`);
     const tokens = normalizeTokens(r);
     setResults(tokens.slice(0, 6));
   };
